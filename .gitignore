@@ -1,0 +1,31 @@
+# Local config & secrets (committed templates are *.example.*)
+config.yaml
+.env
+.env.*
+!.env.example
+
+# Generated reports
+report.html
+report.txt
+*.report.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

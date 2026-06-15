@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  ai-stock-watch — scheduled Lambda that scores a watchlist and emails a
+  daily signal report via SES, with optional S3 archival.
+
+Parameters:
+  ReportSender:
+    Type: String
+    Description: Verified SES sender email address.
+  ReportRecipient:
+    Type: String
+    Description: Comma-separated recipient email address(es).
+  Schedule:
+    Type: String
+    Default: "cron(0 22 ? * MON-FRI *)"
+    Description: EventBridge schedule (default 22:00 UTC, weekdays).
+  EmailEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether the function should send email (vs. dry run in logs).
+
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 512
+    Runtime: python3.12
+
+Resources:
+  ReportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldReports
+            Status: Enabled
+            ExpirationInDays: 90
+
+  StockWatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handler.lambda_handler
+      CodeUri: ../
+      Description: Scores the watchlist and emails the daily report.
+      Environment:
+        Variables:
+          REPORT_SENDER: !Ref ReportSender
+          REPORT_RECIPIENT: !Ref ReportRecipient
+          REPORT_BUCKET: !Ref ReportBucket
+          EMAIL_ENABLED: !Ref EmailEnabled
+      Policies:
+        - Statement:
+            - Sid: SendReportEmail
+              Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+        - S3CrudPolicy:
+            BucketName: !Ref ReportBucket
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref Schedule
+            Description: Daily watchlist report trigger.
+
+Outputs:
+  FunctionName:
+    Value: !Ref StockWatchFunction
+  ReportBucketName:
+    Value: !Ref ReportBucket
