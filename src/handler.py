@@ -96,7 +96,11 @@ def run(config: dict, send: bool | None = None) -> dict:
 
 def lambda_handler(event, context):  # noqa: ARG001 - Lambda signature
     config = load_config()
-    report = run(config)
+    # EMAIL_ENABLED (set by the SAM template) overrides the config default so the
+    # send behaviour is controlled by infra, not a value baked into the package.
+    email_enabled = env("EMAIL_ENABLED")
+    send = email_enabled.strip().lower() == "true" if email_enabled is not None else None
+    report = run(config, send=send)
     return {
         "statusCode": 200,
         "count": report["count"],

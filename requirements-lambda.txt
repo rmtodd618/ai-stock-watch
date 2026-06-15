@@ -1,0 +1,4 @@
+# Runtime dependencies packaged into the Lambda artifact.
+# boto3 is intentionally omitted — it is provided by the Lambda runtime.
+yfinance>=0.2.40
+PyYAML>=6.0
