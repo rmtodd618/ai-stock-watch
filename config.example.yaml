@@ -9,6 +9,7 @@ features:
   news_sentiment: false   # Phase 3: tilt + context from news (needs ANTHROPIC_API_KEY)
 
 watchlist:
+  # Speculative AI / software
   - PLTR
   - TEM
   - SOUN
@@ -17,6 +18,20 @@ watchlist:
   - PATH
   - UPST
   - CRWV
+  # Memory & storage (AI memory supercycle)
+  - MU
+  - SNDK
+  - STX
+  - WDC
+  - LRCX
+  # AI infrastructure (picks & shovels)
+  - NVDA
+  - ALAB
+  - CRDO
+  - VRT
+  - ANET
+  - CLS
+  # Benchmarks
   - QQQ
   - SPY
   - SMH
@@ -60,8 +75,8 @@ earnings:
 # themes map tickers to themes; macro.regimes detect a regime from a proxy
 # series and tilt every ticker belonging to the affected theme(s).
 themes:
-  ai_memory: [MU, SNDK, STX, WDC]
-  ai_infra: [ALAB, CRDO, VRT, ANET, CLS, SMH]
+  ai_memory: [MU, SNDK, STX, WDC, LRCX]
+  ai_infra: [ALAB, CRDO, VRT, ANET, CLS, SMH, NVDA]
   energy: [XLE, XOM, OXY, CVX]
   defense: [LMT, RTX, NOC]
 
