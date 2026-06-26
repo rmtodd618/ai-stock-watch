@@ -21,8 +21,9 @@ venv/
 .coverage
 htmlcov/
 
-# AWS SAM
+# AWS SAM / build artifact
 .aws-sam/
+build/
 samconfig.toml
 
 # OS / editor

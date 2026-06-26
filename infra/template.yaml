@@ -70,13 +70,11 @@ Resources:
 
   StockWatchFunction:
     Type: AWS::Serverless::Function
-    Metadata:
-      # Explicit Makefile build: installs Linux wheels and copies only src/ +
-      # config into the artifact. Requires `sam build --use-container`.
-      BuildMethod: makefile
     Properties:
       Handler: src/handler.lambda_handler
-      CodeUri: ../
+      # Prebuilt by scripts/build-lambda.sh (Docker-free; Linux x86_64 wheels +
+      # src/ + config). Run that script before `sam deploy`.
+      CodeUri: ../build
       Architectures:
         - x86_64
       Description: Scores the watchlist and emails the daily report.
