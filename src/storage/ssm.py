@@ -18,12 +18,12 @@ def get_secure_parameter(name: str, region: Optional[str] = None) -> Optional[st
     if not name:
         return None
 
-    import boto3  # lazy import: provided by the Lambda runtime
-
     try:
+        import boto3  # lazy import: provided by the Lambda runtime
+
         client = boto3.client("ssm", region_name=region)
         resp = client.get_parameter(Name=name, WithDecryption=True)
         return resp["Parameter"]["Value"]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - incl. ImportError when boto3 absent
         logger.warning("Could not read SSM parameter %s: %s", name, exc)
         return None
