@@ -103,7 +103,7 @@ the SAM template parameters / function environment.
 One Lambda, one schedule, SES send permission, optional S3 bucket.
 
 ```bash
-sam build -t infra/template.yaml
+sam build --use-container -t infra/template.yaml
 sam deploy --guided \
   --parameter-overrides \
     ReportSender=you@verified-domain.com \
@@ -114,6 +114,29 @@ Requirements:
 - The **sender** address/domain must be verified in SES.
 - If your SES account is in the sandbox, the **recipient** must also be verified.
 - The schedule defaults to weekdays at 22:00 UTC; change `Schedule` in the template.
+
+### Enabling the v2 context layers
+
+All v2 features are off by default and toggled via deploy parameters (which map
+to env vars the function reads — no `config.yaml` is baked into the package):
+
+```bash
+sam deploy \
+  --parameter-overrides \
+    ReportSender=you@verified-domain.com \
+    ReportRecipient=you@example.com \
+    EarningsGuardEnabled=true \
+    MacroOverlayEnabled=true \
+    NewsSentimentEnabled=true \
+    AnthropicApiKey=sk-ant-...     # only needed when NewsSentimentEnabled=true
+```
+
+- **Earnings guard** and **macro overlay** are free — no key required.
+- **News sentiment** needs `AnthropicApiKey`. The parameter is `NoEcho`, so the
+  value is masked in the console and CloudFormation output. It is passed at
+  deploy time (kept out of git via `samconfig.toml`, which is git-ignored).
+  For stronger isolation you can instead store the key in SSM and have the
+  function fetch it at runtime — ask if you want that hardening.
 
 ---
 

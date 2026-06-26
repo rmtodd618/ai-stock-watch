@@ -20,10 +20,35 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: Whether the function should send email (vs. dry run in logs).
+  EarningsGuardEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable the earnings-proximity guard (free; no key needed).
+  MacroOverlayEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable the macro/theme regime overlay (free; no key needed).
+  NewsSentimentEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable Claude news sentiment. Requires AnthropicApiKey to be set.
+  AnthropicApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >
+      Anthropic API key for news sentiment. Only needed when NewsSentimentEnabled
+      is true. Pass at deploy time; NoEcho keeps it out of console/CloudFormation
+      output. Leave blank to deploy without the news layer.
 
 Globals:
   Function:
-    Timeout: 120
+    # Headroom for the news-sentiment layer (one Claude call per ticker, run
+    # sequentially). Billed on actual duration, so the ceiling is free if unused.
+    Timeout: 300
     MemorySize: 512
     Runtime: python3.12
 
@@ -60,6 +85,10 @@ Resources:
           REPORT_RECIPIENT: !Ref ReportRecipient
           REPORT_BUCKET: !Ref ReportBucket
           EMAIL_ENABLED: !Ref EmailEnabled
+          EARNINGS_GUARD_ENABLED: !Ref EarningsGuardEnabled
+          MACRO_OVERLAY_ENABLED: !Ref MacroOverlayEnabled
+          NEWS_SENTIMENT_ENABLED: !Ref NewsSentimentEnabled
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
       Policies:
         - Statement:
             - Sid: SendReportEmail

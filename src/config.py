@@ -28,7 +28,27 @@ def load_config(path: Optional[str | Path] = None) -> dict:
             "No config found. Create config.yaml (copy config.example.yaml)."
         )
     with open(path, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh) or {}
+        cfg = yaml.safe_load(fh) or {}
+    return _apply_feature_env_overrides(cfg)
+
+
+# Env var per feature flag, so infra (SAM) can toggle features without baking a
+# config.yaml into the deployment package.
+_FEATURE_ENV_VARS = {
+    "earnings_guard": "EARNINGS_GUARD_ENABLED",
+    "macro_overlay": "MACRO_OVERLAY_ENABLED",
+    "news_sentiment": "NEWS_SENTIMENT_ENABLED",
+}
+
+
+def _apply_feature_env_overrides(cfg: dict) -> dict:
+    """Overlay feature flags from env vars; an unset var leaves the config value."""
+    features = cfg.setdefault("features", {})
+    for flag, var in _FEATURE_ENV_VARS.items():
+        raw = os.environ.get(var)
+        if raw is not None:
+            features[flag] = raw.strip().lower() == "true"
+    return cfg
 
 
 def env(name: Optional[str], default: Optional[str] = None) -> Optional[str]:
