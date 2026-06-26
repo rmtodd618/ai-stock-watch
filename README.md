@@ -127,16 +127,27 @@ sam deploy \
     ReportRecipient=you@example.com \
     EarningsGuardEnabled=true \
     MacroOverlayEnabled=true \
-    NewsSentimentEnabled=true \
-    AnthropicApiKey=sk-ant-...     # only needed when NewsSentimentEnabled=true
+    NewsSentimentEnabled=true
 ```
 
 - **Earnings guard** and **macro overlay** are free — no key required.
-- **News sentiment** needs `AnthropicApiKey`. The parameter is `NoEcho`, so the
-  value is masked in the console and CloudFormation output. It is passed at
-  deploy time (kept out of git via `samconfig.toml`, which is git-ignored).
-  For stronger isolation you can instead store the key in SSM and have the
-  function fetch it at runtime — ask if you want that hardening.
+- **News sentiment** needs an Anthropic API key. The key never goes in the
+  template, CloudFormation, or the Lambda environment — it lives in **SSM
+  Parameter Store** as a `SecureString`, and the function reads + decrypts it at
+  runtime. Create it once before enabling the feature:
+
+  ```bash
+  aws ssm put-parameter \
+    --name /ai-stock-watch/anthropic-api-key \
+    --type SecureString \
+    --value sk-ant-...
+  ```
+
+  The deploy grants the function a scoped `ssm:GetParameter` + `kms:Decrypt`
+  (via-SSM only) policy for exactly that parameter. Override the parameter name
+  with `AnthropicApiKeySsmParam=...` if you use a different path. For local
+  testing, set `ANTHROPIC_API_KEY` in `.env` instead (the function falls back to
+  it when no SSM parameter name is configured).
 
 ---
 

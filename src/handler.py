@@ -23,7 +23,7 @@ from src.scoring.earnings_guard import apply_earnings_guard
 from src.scoring.score import score_metrics
 from src.scoring.sentiment import sentiment_tilt
 from src.scoring.technicals import compute_metrics
-from src.storage import s3
+from src.storage import s3, ssm
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("ai-stock-watch")
@@ -97,6 +97,23 @@ def build_results(
     return results
 
 
+def _resolve_anthropic_key(news_cfg: dict, region: str | None) -> str | None:
+    """Resolve the Anthropic API key: SSM SecureString first, then env var.
+
+    In Lambda the key lives only in SSM — the env var holds the *parameter name*.
+    For local dev, set ANTHROPIC_API_KEY directly and leave the SSM var unset.
+    """
+    ssm_param = env(news_cfg.get("api_key_ssm_param_env_var"))
+    if ssm_param:
+        key = ssm.get_secure_parameter(ssm_param, region=region)
+        if key:
+            return key
+        logger.warning(
+            "No usable key in SSM param %s; falling back to env var", ssm_param
+        )
+    return env(news_cfg.get("api_key_env_var"))
+
+
 def run(config: dict, send: bool | None = None) -> dict:
     """Fetch data, build the report, and optionally email/archive it.
 
@@ -106,6 +123,7 @@ def run(config: dict, send: bool | None = None) -> dict:
     features = config.get("features", {})
     period = config.get("data", {}).get("history_period", "1y")
     watchlist = config.get("watchlist", [])
+    region = env("AWS_REGION")
 
     logger.info("Fetching %d tickers (%s history)", len(watchlist), period)
     closes_by_ticker = prices.fetch_many(watchlist, period=period)
@@ -131,7 +149,7 @@ def run(config: dict, send: bool | None = None) -> dict:
     if features.get("news_sentiment"):
         news_cfg = config.get("news", {})
         model = news_cfg.get("model")
-        api_key = env(news_cfg.get("api_key_env_var"))
+        api_key = _resolve_anthropic_key(news_cfg, region)
         limit = news_cfg.get("max_headlines", 8)
         sentiment = {}
         for t in tickers:
@@ -153,7 +171,6 @@ def run(config: dict, send: bool | None = None) -> dict:
     html = email_template.render_html(results, title, generated_at, disclaimer)
     text = email_template.render_text(results, title, generated_at, disclaimer)
 
-    region = env("AWS_REGION")
     should_send = report_cfg.get("email_enabled", False) if send is None else send
     message_id = None
     if should_send:

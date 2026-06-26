@@ -89,6 +89,9 @@ macro:
 news:
   max_headlines: 8
   model: "claude-haiku-4-5"   # cheap, high-volume classification
+  # Key resolution order: SSM SecureString (named by the env var below) first,
+  # then the plain env var for local dev.
+  api_key_ssm_param_env_var: ANTHROPIC_API_KEY_SSM_PARAM
   api_key_env_var: ANTHROPIC_API_KEY
 
 report:

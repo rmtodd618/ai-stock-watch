@@ -34,15 +34,16 @@ Parameters:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: Enable Claude news sentiment. Requires AnthropicApiKey to be set.
-  AnthropicApiKey:
+    Description: Enable Claude news sentiment. Requires the SSM param below to exist.
+  AnthropicApiKeySsmParam:
     Type: String
-    Default: ""
-    NoEcho: true
+    Default: "/ai-stock-watch/anthropic-api-key"
     Description: >
-      Anthropic API key for news sentiment. Only needed when NewsSentimentEnabled
-      is true. Pass at deploy time; NoEcho keeps it out of console/CloudFormation
-      output. Leave blank to deploy without the news layer.
+      Name of the SSM SecureString parameter holding the Anthropic API key. The
+      function reads and decrypts it at runtime — the key value never enters the
+      template, CloudFormation, or the Lambda environment. Create it once with:
+      aws ssm put-parameter --name /ai-stock-watch/anthropic-api-key
+      --type SecureString --value sk-ant-...
 
 Globals:
   Function:
@@ -88,7 +89,7 @@ Resources:
           EARNINGS_GUARD_ENABLED: !Ref EarningsGuardEnabled
           MACRO_OVERLAY_ENABLED: !Ref MacroOverlayEnabled
           NEWS_SENTIMENT_ENABLED: !Ref NewsSentimentEnabled
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ANTHROPIC_API_KEY_SSM_PARAM: !Ref AnthropicApiKeySsmParam
       Policies:
         - Statement:
             - Sid: SendReportEmail
@@ -99,6 +100,18 @@ Resources:
               Resource: "*"
         - S3CrudPolicy:
             BucketName: !Ref ReportBucket
+        - Statement:
+            - Sid: ReadAnthropicKey
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${AnthropicApiKeySsmParam}"
+            - Sid: DecryptAnthropicKey
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
       Events:
         DailySchedule:
           Type: Schedule
