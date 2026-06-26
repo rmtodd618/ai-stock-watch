@@ -2,6 +2,12 @@
 # No secrets or personal data belong in this file — email addresses and the S3
 # bucket are read from environment variables named by the *_env_var keys below.
 
+# v2 context layers. All default false so v1 behaviour needs no extra keys/network.
+features:
+  earnings_guard: false   # Phase 1: cap action near scheduled earnings
+  macro_overlay: false    # Phase 2: tilt scores by macro regime
+  news_sentiment: false   # Phase 3: tilt + context from news (needs ANTHROPIC_API_KEY)
+
 watchlist:
   - PLTR
   - TEM
@@ -40,6 +46,50 @@ scoring:
   momentum:
     # 5-day % move beyond this magnitude scores 0 (too hot or falling knife).
     tolerance_pct: 12
+  # Caps for the v2 overlays. The technical base (0..100) stays dominant: the
+  # most the context layers can move a score is +/- (macro_max + sentiment_max).
+  tilts:
+    macro_max: 8
+    sentiment_max: 10
+
+# Phase 1: earnings guard.
+earnings:
+  guard_window_days: 5   # a name reporting within N days is capped at WATCH
+
+# Phase 2: macro / theme overlay.
+# themes map tickers to themes; macro.regimes detect a regime from a proxy
+# series and tilt every ticker belonging to the affected theme(s).
+themes:
+  ai_memory: [MU, SNDK, STX, WDC]
+  ai_infra: [ALAB, CRDO, VRT, ANET, CLS, SMH]
+  energy: [XLE, XOM, OXY, CVX]
+  defense: [LMT, RTX, NOC]
+
+macro:
+  history_period: "3mo"   # how much macro history to pull for lookbacks
+  regimes:
+    - name: energy_tailwind
+      series: "CL=F"        # crude oil futures
+      lookback_days: 20
+      change_pct: 10        # up >= 10% over the lookback
+      direction: up
+      themes: [energy]
+      tilt: 8
+      tag: "Energy regime"
+    - name: risk_off
+      series: "^VIX"        # volatility index
+      lookback_days: 10
+      change_pct: 30
+      direction: up
+      themes: ["*"]         # applies to every ticker
+      tilt: -6
+      tag: "Risk-off (VIX spike)"
+
+# Phase 3: news + sentiment.
+news:
+  max_headlines: 8
+  model: "claude-haiku-4-5"   # cheap, high-volume classification
+  api_key_env_var: ANTHROPIC_API_KEY
 
 report:
   title: "AI Stock Watch — Daily Signal Report"

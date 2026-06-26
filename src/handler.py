@@ -13,10 +13,15 @@ import logging
 from datetime import datetime, timezone
 
 from src.config import env, load_config, resolve_recipients
-from src.data_sources import prices
+from src.data_sources import earnings, macro, news, prices
+from src.llm import claude
 from src.reporting import email_template, ses
+from src.scoring import regimes
 from src.scoring.actions import action_for_score
+from src.scoring.composite import composite_score
+from src.scoring.earnings_guard import apply_earnings_guard
 from src.scoring.score import score_metrics
+from src.scoring.sentiment import sentiment_tilt
 from src.scoring.technicals import compute_metrics
 from src.storage import s3
 
@@ -24,25 +29,68 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger("ai-stock-watch")
 
 
-def build_results(config: dict, closes_by_ticker: dict[str, list[float]]) -> list[dict]:
-    """Turn raw closes into scored, sorted result rows."""
-    thresholds = config.get("scoring", {}).get("thresholds", {})
+def build_results(
+    config: dict,
+    closes_by_ticker: dict[str, list[float]],
+    *,
+    active_regimes: list[dict] | None = None,
+    earnings_days: dict[str, int | None] | None = None,
+    sentiment: dict[str, dict | None] | None = None,
+) -> list[dict]:
+    """Turn raw closes (+ optional context overlays) into scored, sorted rows.
+
+    The overlay inputs are pre-fetched by ``run()`` based on feature flags, so
+    this stays pure and unit-testable (no network).
+    """
+    scoring = config.get("scoring", {})
+    thresholds = scoring.get("thresholds", {})
+    tilts = scoring.get("tilts", {})
+    macro_cap = tilts.get("macro_max", 8)
+    sentiment_cap = tilts.get("sentiment_max", 10)
+    themes_map = config.get("themes", {})
+    guard_window = config.get("earnings", {}).get("guard_window_days", 5)
+
+    active_regimes = active_regimes or []
+    earnings_days = earnings_days or {}
+    sentiment = sentiment or {}
+
     results: list[dict] = []
     for ticker, closes in closes_by_ticker.items():
         metrics = compute_metrics(closes)
         if not metrics:
             logger.warning("Skipping %s: no usable metrics", ticker)
             continue
+
         scored = score_metrics(metrics, config)
-        action = action_for_score(scored["score"], thresholds)
+        base = scored["score"]
+
+        m_tilt, m_tags = regimes.macro_tilt(ticker, active_regimes, themes_map, macro_cap)
+        s_tilt, s_summary = sentiment_tilt(sentiment.get(ticker), sentiment_cap)
+
+        final = composite_score(base, m_tilt, s_tilt)
+        action = action_for_score(final, thresholds)
+
+        action, earnings_tag = apply_earnings_guard(
+            action, earnings_days.get(ticker), guard_window
+        )
+
+        tags = list(m_tags)
+        if earnings_tag:
+            tags.append(earnings_tag)
+
         results.append(
             {
                 "ticker": ticker,
-                "score": scored["score"],
+                "score": round(final, 1),
+                "base_score": base,
                 "action": action.label,
                 "metrics": metrics,
                 "components": scored["components"],
                 "breakdown": scored["breakdown"],
+                "macro_tilt": m_tilt,
+                "sentiment_tilt": s_tilt,
+                "tags": tags,
+                "summary": s_summary,
             }
         )
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -55,12 +103,48 @@ def run(config: dict, send: bool | None = None) -> dict:
     Returns a dict with the rendered bodies and per-ticker results.
     """
     report_cfg = config.get("report", {})
+    features = config.get("features", {})
     period = config.get("data", {}).get("history_period", "1y")
     watchlist = config.get("watchlist", [])
 
     logger.info("Fetching %d tickers (%s history)", len(watchlist), period)
     closes_by_ticker = prices.fetch_many(watchlist, period=period)
-    results = build_results(config, closes_by_ticker)
+    tickers = list(closes_by_ticker)
+
+    # --- v2 context overlays (each gated by a feature flag) ---
+    active = None
+    if features.get("macro_overlay"):
+        macro_cfg = config.get("macro", {})
+        regimes_cfg = macro_cfg.get("regimes", [])
+        changes = macro.fetch_macro_changes(
+            regimes_cfg, period=macro_cfg.get("history_period", "3mo")
+        )
+        active = regimes.active_regimes(changes, regimes_cfg)
+        if active:
+            logger.info("Active macro regimes: %s", [r.get("name") for r in active])
+
+    earnings_days = None
+    if features.get("earnings_guard"):
+        earnings_days = {t: earnings.days_until_earnings(t) for t in tickers}
+
+    sentiment = None
+    if features.get("news_sentiment"):
+        news_cfg = config.get("news", {})
+        model = news_cfg.get("model")
+        api_key = env(news_cfg.get("api_key_env_var"))
+        limit = news_cfg.get("max_headlines", 8)
+        sentiment = {}
+        for t in tickers:
+            headlines = news.fetch_headlines(t, limit=limit)
+            sentiment[t] = claude.score_headlines(t, headlines, model, api_key)
+
+    results = build_results(
+        config,
+        closes_by_ticker,
+        active_regimes=active,
+        earnings_days=earnings_days,
+        sentiment=sentiment,
+    )
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     title = report_cfg.get("title", "AI Stock Watch")

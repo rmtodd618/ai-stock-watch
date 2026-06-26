@@ -2,3 +2,5 @@
 # boto3 is intentionally omitted — it is provided by the Lambda runtime.
 yfinance>=0.2.40
 PyYAML>=6.0
+# Only needed when the news_sentiment feature is enabled.
+anthropic>=0.40

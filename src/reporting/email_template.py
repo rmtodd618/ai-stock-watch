@@ -38,18 +38,34 @@ def _fmt_num(v: Optional[float]) -> str:
     return f"{v:,.2f}" if isinstance(v, (int, float)) else "—"
 
 
+def _notes(r: dict) -> str:
+    """Compact notes: regime/earnings tags, tilt deltas, and news summary."""
+    parts: list[str] = list(r.get("tags", []))
+    m = r.get("macro_tilt") or 0
+    s = r.get("sentiment_tilt") or 0
+    if m:
+        parts.append(f"macro {m:+.0f}")
+    if s:
+        parts.append(f"news {s:+.0f}")
+    if r.get("summary"):
+        parts.append(r["summary"])
+    return " · ".join(parts)
+
+
 def render_text(results: list[dict], title: str, generated_at: str, disclaimer: str) -> str:
     lines = [title, generated_at, ""]
     lines.append(f"{'TICKER':<8}{'SCORE':>7}  {'ACTION':<16}{'PRICE':>12}{'5D':>9}{'30D':>9}{'%<52wH':>10}")
     lines.append("-" * 80)
     for r in results:
         m = r["metrics"]
+        note = _notes(r)
         lines.append(
             f"{r['ticker']:<8}{r['score']:>7.1f}  {r['action']:<16}"
             f"{_fmt_price(m.get('current_price')):>12}"
             f"{_fmt_pct(m.get('change_5d')):>9}"
             f"{_fmt_pct(m.get('change_30d')):>9}"
             f"{_fmt_pct(m.get('pct_below_52w_high')):>10}"
+            f"{('  ' + note) if note else ''}"
         )
     lines += ["", disclaimer.strip()]
     return "\n".join(lines)
@@ -78,6 +94,7 @@ def render_html(results: list[dict], title: str, generated_at: str, disclaimer: 
           <td class="num">{_fmt_num(m.get('ma200'))}</td>
           <td class="num">{_fmt_pct(m.get('pct_below_52w_high'))}</td>
           <td class="bd">{bd}</td>
+          <td class="bd">{_notes(r)}</td>
         </tr>"""
         )
 
@@ -120,7 +137,7 @@ def render_html(results: list[dict], title: str, generated_at: str, disclaimer: 
           <th>Ticker</th><th class="num">Score</th><th>Action</th>
           <th class="num">Price</th><th class="num">5D</th><th class="num">30D</th>
           <th class="num">MA50</th><th class="num">MA200</th><th class="num">%&lt;52wH</th>
-          <th>Breakdown</th>
+          <th>Breakdown</th><th>Notes</th>
         </tr>
       </thead>
       <tbody>{''.join(rows)}
