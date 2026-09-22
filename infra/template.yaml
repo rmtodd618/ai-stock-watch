@@ -20,6 +20,14 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: Whether the function should send email (vs. dry run in logs).
+  SaveToS3:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Archive each run to the report bucket: the rendered HTML under reports/,
+      and the structured per-ticker rows under snapshots/. The snapshots are what
+      accumulate into an out-of-sample record of what the tool actually said.
   EarningsGuardEnabled:
     Type: String
     Default: "false"
@@ -64,8 +72,11 @@ Resources:
         RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
-          - Id: ExpireOldReports
+          # Only the rendered emails expire. The snapshots under snapshots/ are
+          # the point of the bucket — they must accumulate, not roll off.
+          - Id: ExpireOldRenderedReports
             Status: Enabled
+            Prefix: reports/
             ExpirationInDays: 90
 
   StockWatchFunction:
@@ -84,6 +95,7 @@ Resources:
           REPORT_RECIPIENT: !Ref ReportRecipient
           REPORT_BUCKET: !Ref ReportBucket
           EMAIL_ENABLED: !Ref EmailEnabled
+          SAVE_TO_S3: !Ref SaveToS3
           EARNINGS_GUARD_ENABLED: !Ref EarningsGuardEnabled
           MACRO_OVERLAY_ENABLED: !Ref MacroOverlayEnabled
           NEWS_SENTIMENT_ENABLED: !Ref NewsSentimentEnabled

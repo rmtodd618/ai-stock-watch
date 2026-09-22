@@ -29,25 +29,41 @@ def load_config(path: Optional[str | Path] = None) -> dict:
         )
     with open(path, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
-    return _apply_feature_env_overrides(cfg)
+    return _apply_env_overrides(cfg)
 
 
-# Env var per feature flag, so infra (SAM) can toggle features without baking a
-# config.yaml into the deployment package.
+# Env var per toggle, so infra (SAM) can flip behaviour without baking a
+# config.yaml into the deployment package. Only the committed
+# config.example.yaml ships to Lambda, so anything not listed here is stuck at
+# whatever that file says.
 _FEATURE_ENV_VARS = {
     "earnings_guard": "EARNINGS_GUARD_ENABLED",
     "macro_overlay": "MACRO_OVERLAY_ENABLED",
     "news_sentiment": "NEWS_SENTIMENT_ENABLED",
 }
 
+_REPORT_ENV_VARS = {
+    "save_to_s3": "SAVE_TO_S3",
+}
 
-def _apply_feature_env_overrides(cfg: dict) -> dict:
-    """Overlay feature flags from env vars; an unset var leaves the config value."""
+
+def _as_bool(raw: str) -> bool:
+    return raw.strip().lower() == "true"
+
+
+def _apply_env_overrides(cfg: dict) -> dict:
+    """Overlay toggles from env vars; an unset var leaves the config value."""
     features = cfg.setdefault("features", {})
     for flag, var in _FEATURE_ENV_VARS.items():
         raw = os.environ.get(var)
         if raw is not None:
-            features[flag] = raw.strip().lower() == "true"
+            features[flag] = _as_bool(raw)
+
+    report = cfg.setdefault("report", {})
+    for key, var in _REPORT_ENV_VARS.items():
+        raw = os.environ.get(var)
+        if raw is not None:
+            report[key] = _as_bool(raw)
     return cfg
 
 

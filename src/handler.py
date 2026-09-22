@@ -208,8 +208,25 @@ def run(config: dict, send: bool | None = None) -> dict:
     if report_cfg.get("save_to_s3", False):
         bucket = env(report_cfg.get("s3_bucket_env_var"))
         if bucket:
-            key = f"reports/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}.html"
-            s3.save_report(bucket, key, html, region=region)
+            stamp = datetime.now(timezone.utc)
+            # The rendered email, for reading back.
+            s3.save_report(
+                bucket, f"reports/{stamp.strftime('%Y/%m/%d')}.html", html, region=region
+            )
+            # The structured rows, for analysing later. This is the one that
+            # accumulates into a genuine out-of-sample record — an archived
+            # email is not data you can regress against forward returns.
+            s3.save_snapshot(
+                bucket,
+                f"snapshots/{stamp.strftime('%Y-%m-%d')}.json",
+                s3.build_snapshot(results, config, generated_at),
+                region=region,
+            )
+        else:
+            logger.warning(
+                "save_to_s3 is on but %s is unset — nothing archived",
+                report_cfg.get("s3_bucket_env_var"),
+            )
 
     return {
         "generated_at": generated_at,

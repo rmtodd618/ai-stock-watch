@@ -121,7 +121,28 @@ Email addresses and the S3 bucket are read from environment variables, named by 
 | `REPORT_RECIPIENT` | Email recipient(s), comma-separated |
 | `REPORT_SENDER` | Verified SES sender address |
 | `REPORT_BUCKET` | S3 bucket for archived reports (optional) |
+| `SAVE_TO_S3` | `true`/`false` — overrides `report.save_to_s3` |
+| `EMAIL_ENABLED` | `true`/`false` — overrides `report.email_enabled` |
 | `AWS_REGION` | AWS region for SES / S3 |
+
+Only `config.example.yaml` ships in the Lambda package, so anything the infra
+needs to control has to have an env override here — a value that only exists in
+the YAML is frozen at whatever the committed file says.
+
+### What gets archived
+
+With archiving on, each run writes two objects:
+
+| Key | What it is |
+|-----|------------|
+| `reports/YYYY/MM/DD.html` | The rendered email, for reading back. Expires after 90 days. |
+| `snapshots/YYYY-MM-DD.json` | The structured rows — ticker, rank, action, score, and the metrics behind it — plus the config that produced them. Kept indefinitely. |
+
+The snapshots are the point. An archived email is not data you can analyse; the
+JSON accumulates into a genuine out-of-sample record of what the tool actually
+said on each day, which is the only way to judge it without re-deriving scores
+from prices with hindsight. The rules block is stored beside the rows because a
+score is uninterpretable later without the weights and smoothing window behind it.
 
 Copy `.env.example` to `.env` for local use (git-ignored). In Lambda these come from
 the SAM template parameters / function environment.
