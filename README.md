@@ -144,6 +144,35 @@ said on each day, which is the only way to judge it without re-deriving scores
 from prices with hindsight. The rules block is stored beside the rows because a
 score is uninterpretable later without the weights and smoothing window behind it.
 
+### Backfilling the record
+
+The technical score is a pure function of its trailing price window, so past
+sessions can be recomputed exactly:
+
+```bash
+python scripts/backfill_snapshots.py --start 2022-01-01 --dry-run   # preview
+python scripts/backfill_snapshots.py --start 2022-01-01 --out ./snapshots
+python scripts/backfill_snapshots.py --start 2022-01-01 --bucket my-report-bucket
+```
+
+Roughly 1,200 sessions take about 25 seconds. Two things the script is careful
+about, both of which are easy to get wrong:
+
+- **Sessions come from one equity benchmark's calendar** (`--benchmark`, default
+  `SPY`), never the union of every ticker's dates. Futures and index series trade
+  on days the stock market is shut, and a union calendar produces sessions where
+  no stock has a price — which the scorer reads as "nothing qualifies".
+- **Rows are stamped `"source": "backfill"`.** A reconstructed row restates what
+  *today's* rules would have said, on a watchlist chosen knowing how these names
+  turned out. It is not out-of-sample evidence, and must never be pooled with
+  live rows as though it were.
+
+The v2 layers cannot be reconstructed — news sentiment depends on headlines as
+published, the earnings guard on a forward calendar as it stood, the macro
+overlay on a regime read at the time. The script refuses to run while any of them
+is enabled rather than emit rows that quietly differ in meaning from live ones.
+Those only accumulate going forward.
+
 Copy `.env.example` to `.env` for local use (git-ignored). In Lambda these come from
 the SAM template parameters / function environment.
 
@@ -222,6 +251,10 @@ ai-stock-watch/
       ses.py              # send via SES
     storage/
       s3.py               # archive report to S3 (optional)
+  backfill.py           # pure: price history -> reconstructed past snapshots
+  scripts/
+    build-lambda.sh       # Docker-free Lambda artifact
+    backfill_snapshots.py # CLI: reconstruct and write historical snapshots
   infra/template.yaml     # AWS SAM: Lambda + EventBridge + SES + S3
   tests/                  # pytest, no network
   config.example.yaml

@@ -56,12 +56,22 @@ _SNAPSHOT_METRICS = (
 )
 
 
-def build_snapshot(results: list[dict], config: dict, generated_at: str) -> dict:
+def build_snapshot(
+    results: list[dict],
+    config: dict,
+    generated_at: str,
+    source: str = "live",
+) -> dict:
     """Structured record of one run: the rows plus the rules that produced them.
 
     The rules are stored alongside the rows on purpose. A year from now the
     config will have moved on, and a score with no record of the weights,
     smoothing window or selection mode behind it cannot be interpreted.
+
+    ``source`` is ``"live"`` for a row observed on the day, or ``"backfill"``
+    for one reconstructed afterwards from price history. Keep the distinction:
+    a reconstructed row is not out-of-sample evidence, it is a restatement of
+    what the current rules would have said.
     """
     scoring = config.get("scoring", {}) or {}
     rows: list[dict[str, Any]] = []
@@ -74,6 +84,7 @@ def build_snapshot(results: list[dict], config: dict, generated_at: str) -> dict
 
     return {
         "schema": 1,
+        "source": source,
         "generated_at": generated_at,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "rules": {

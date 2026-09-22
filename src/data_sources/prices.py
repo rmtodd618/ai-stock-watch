@@ -34,6 +34,31 @@ def fetch_closes(ticker: str, period: str = "1y") -> Optional[list[float]]:
     return closes or None
 
 
+def fetch_history(ticker: str, period: str = "max") -> Optional[tuple[list[str], list[float]]]:
+    """Return ``(dates, closes)`` as parallel lists, oldest -> newest.
+
+    ``fetch_closes`` throws the index away because the live path never needs it.
+    Backfilling does: without dates there is no way to slice the series "as of"
+    a past session.
+    """
+    import yfinance as yf
+
+    try:
+        history = yf.Ticker(ticker).history(period=period, auto_adjust=True)
+    except Exception as exc:  # noqa: BLE001 - third-party can raise broadly
+        logger.warning("Failed to fetch %s: %s", ticker, exc)
+        return None
+
+    if history is None or history.empty or "Close" not in history:
+        logger.warning("No price data returned for %s", ticker)
+        return None
+
+    closes = history["Close"].dropna()
+    if closes.empty:
+        return None
+    return [d.strftime("%Y-%m-%d") for d in closes.index], [float(c) for c in closes]
+
+
 def fetch_many(tickers: list[str], period: str = "1y") -> dict[str, list[float]]:
     """Fetch closes for several tickers. Missing/failed tickers are omitted."""
     out: dict[str, list[float]] = {}
