@@ -13,6 +13,7 @@ _ACTION_COLORS = {
     "STARTER SIGNAL": "#2f6fae",
     "WATCH": "#8a6d1f",
     "AVOID FOR NOW": "#9a3b3b",
+    "BENCHMARK": "#6b7585",
 }
 
 _COMPONENT_ORDER = [
@@ -38,6 +39,11 @@ def _fmt_num(v: Optional[float]) -> str:
     return f"{v:,.2f}" if isinstance(v, (int, float)) else "—"
 
 
+def _fmt_rank(v: Optional[int]) -> str:
+    """Benchmark rows carry no rank — they are not part of the ranked field."""
+    return str(v) if isinstance(v, int) else "—"
+
+
 def _notes(r: dict) -> str:
     """Compact notes: regime/earnings tags, tilt deltas, and news summary."""
     parts: list[str] = list(r.get("tags", []))
@@ -54,13 +60,13 @@ def _notes(r: dict) -> str:
 
 def render_text(results: list[dict], title: str, generated_at: str, disclaimer: str) -> str:
     lines = [title, generated_at, ""]
-    lines.append(f"{'TICKER':<8}{'SCORE':>7}  {'ACTION':<16}{'PRICE':>12}{'5D':>9}{'30D':>9}{'%<52wH':>10}")
-    lines.append("-" * 80)
+    lines.append(f"{'#':>3}  {'TICKER':<8}{'SCORE':>7}  {'ACTION':<16}{'PRICE':>12}{'5D':>9}{'30D':>9}{'%<52wH':>10}")
+    lines.append("-" * 84)
     for r in results:
         m = r["metrics"]
         note = _notes(r)
         lines.append(
-            f"{r['ticker']:<8}{r['score']:>7.1f}  {r['action']:<16}"
+            f"{_fmt_rank(r.get('rank')):>3}  {r['ticker']:<8}{r['score']:>7.1f}  {r['action']:<16}"
             f"{_fmt_price(m.get('current_price')):>12}"
             f"{_fmt_pct(m.get('change_5d')):>9}"
             f"{_fmt_pct(m.get('change_30d')):>9}"
@@ -84,6 +90,7 @@ def render_html(results: list[dict], title: str, generated_at: str, disclaimer: 
         rows.append(
             f"""
         <tr>
+          <td class="rk">{_fmt_rank(r.get('rank'))}</td>
           <td class="tk">{r['ticker']}</td>
           <td class="sc">{r['score']:.0f}</td>
           <td><span class="badge" style="background:{color}">{action}</span></td>
@@ -116,6 +123,7 @@ def render_html(results: list[dict], title: str, generated_at: str, disclaimer: 
         text-transform: uppercase; letter-spacing: .03em; }}
   td.num, th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
   td.tk {{ font-weight: 700; }}
+  td.rk {{ color: #8a93a3; text-align: right; font-variant-numeric: tabular-nums; }}
   td.sc {{ font-weight: 700; text-align: right; }}
   .badge {{ color: #fff; padding: 2px 8px; border-radius: 999px; font-size: 11px;
             font-weight: 600; white-space: nowrap; }}
@@ -134,7 +142,7 @@ def render_html(results: list[dict], title: str, generated_at: str, disclaimer: 
     <table>
       <thead>
         <tr>
-          <th>Ticker</th><th class="num">Score</th><th>Action</th>
+          <th class="num">#</th><th>Ticker</th><th class="num">Score</th><th>Action</th>
           <th class="num">Price</th><th class="num">5D</th><th class="num">30D</th>
           <th class="num">MA50</th><th class="num">MA200</th><th class="num">%&lt;52wH</th>
           <th>Breakdown</th><th>Notes</th>

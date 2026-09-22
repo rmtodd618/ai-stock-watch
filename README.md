@@ -25,17 +25,47 @@ For each ticker it computes:
 | `ma50` / `ma200` | 50- and 200-day simple moving averages |
 | `pct_below_52w_high` | How far the price sits below its 52-week high |
 
-It then produces a **score (0–100)** from four weighted components and maps it to
-an **action tier**:
+It then produces a **score (0–100)** from four weighted components, averages that
+score over the last 40 sessions, and ranks the watchlist on the result:
 
-| Tier | Default score | Meaning |
-|------|---------------|---------|
-| `ADD SIGNAL` | ≥ 80 | Strong uptrend + healthy setup |
-| `STARTER SIGNAL` | ≥ 65 | Constructive setup, partial conviction |
-| `WATCH` | ≥ 50 | Mixed signals, keep on radar |
-| `AVOID FOR NOW` | < 50 | Weak trend / broken setup |
+| Tier | Meaning |
+|------|---------|
+| `ADD SIGNAL` | One of the `top_n` best setups on offer today |
+| `STARTER SIGNAL` | Next in line — first to rotate in |
+| `WATCH` | Below the flagged set but still above the `watch` floor |
+| `AVOID FOR NOW` | Below the `watch` floor |
+| `BENCHMARK` | An index/ETF row, shown for comparison and never ranked |
 
-Thresholds and weights are all configurable in `config.yaml`.
+### Why rank, and why smooth
+
+Both choices come out of backtesting the v1 rules, and both address the same
+failure: the v1 report traded far more than its signal justified.
+
+**Ranking instead of thresholding.** A fixed cutoff ("score ≥ 65") makes the size
+of the flagged set depend on the market's mood rather than on what is on offer. In
+a drawdown every score falls together, the report empties out, and the strategy
+sits in cash at precisely the moment the setups it exists to find are forming. Rank
+mode asks "which are the best `top_n` right now?", so the flagged set is the same
+size every day and no position round-trips a fixed line as its score drifts across
+it. Set `scoring.selection.mode: threshold` to restore the v1 behaviour.
+
+**Smoothing the score.** Measured against forward returns, the score's information
+is strongest at roughly a three-month horizon (rank IC +0.11 at 63 sessions versus
++0.06 at 5). Acting on the raw daily value therefore trades mostly noise. Averaging
+the score over `scoring.smoothing_days` sessions keeps the slow component and cut
+simulated turnover by about 5× without giving up return. Set `smoothing_days: 1`
+for the v1 behaviour.
+
+No state is needed for this: the score is a pure function of its trailing close
+window, so a past session's score is recovered by truncating the series. The run
+just fetches enough history (`data.history_period`) to cover
+`lookback_days + smoothing_days`.
+
+> These are engineering fixes to a noisy rule, not evidence that the strategy beats
+> buying and holding the same list. In backtest it does not reliably do so.
+
+Thresholds, weights, `top_n` and `smoothing_days` are all configurable in
+`config.yaml`.
 
 ### The score
 
@@ -163,6 +193,8 @@ ai-stock-watch/
     scoring/
       technicals.py       # pure: closes -> metrics
       score.py            # pure: metrics -> score + component breakdown
+      smoothing.py        # pure: closes -> score averaged over N sessions
+      selection.py        # pure: sorted rows -> action tier (rank or threshold)
       actions.py          # pure: score -> action tier
     reporting/
       email_template.py   # render HTML + text report
@@ -179,10 +211,12 @@ ai-stock-watch/
 
 ## Roadmap
 
-- Fundamentals component (valuation, growth, profitability)
-- Earnings-proximity flag (avoid initiating right before earnings)
-- News/sentiment signal
-- Per-ticker notes and historical score tracking in DynamoDB
+- Fundamentals component (valuation, growth, profitability) — the five current
+  components correlate 0.49–0.75 with each other, so they are close to one signal
+  measured four ways; genuinely new information has to come from outside the price
+  series
+- Per-ticker notes in DynamoDB (score history is no longer needed for smoothing —
+  it is recomputed from prices)
 
 ## License
 

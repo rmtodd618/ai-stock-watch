@@ -31,17 +31,43 @@ watchlist:
   - VRT
   - ANET
   - CLS
-  # Benchmarks
+
+# Index/ETF rows shown for comparison. They are fetched and scored like anything
+# else, but never ranked — otherwise SPY and QQQ would quietly take slots in the
+# flagged set, since a broad index almost always outscores a single volatile name.
+benchmarks:
   - QQQ
   - SPY
   - SMH
 
 data:
-  # How much daily history to pull (passed to the data source).
-  history_period: "1y"
+  # How much daily history to pull. This must cover lookback_days plus
+  # scoring.smoothing_days, so that every session in the smoothing window still
+  # gets a full 52-week lookback of its own.
+  history_period: "18mo"
+  # Sessions each day's metrics and score are computed over (~52 weeks). Kept
+  # separate from history_period so extra fetched history never leaks into the
+  # "52-week high".
+  lookback_days: 252
 
 scoring:
+  # Average the score over this many trailing sessions before ranking on it.
+  # The score's predictive power peaks near a 3-month horizon, so acting on the
+  # raw daily value mostly trades noise. Set to 1 for the old daily behaviour.
+  smoothing_days: 40
+  # How the score becomes an action tier.
+  #   rank      -> the best top_n setups on offer are the portfolio (recommended)
+  #   threshold -> the v1 behaviour: compare each score against the cutoffs below
+  # Rank mode keeps the flagged set the same size every day. Threshold mode lets
+  # a market-wide drawdown empty the report out, which is when it goes to cash
+  # at the bottom.
+  selection:
+    mode: rank
+    top_n: 8     # names that make up the portfolio
+    bench_n: 3   # next-best names, flagged STARTER (first to rotate in)
   thresholds:
+    # Used verbatim in threshold mode. In rank mode only `watch` is used, as the
+    # floor below which a name is called AVOID rather than WATCH.
     add: 80      # >= add        -> ADD SIGNAL
     starter: 65  # >= starter    -> STARTER SIGNAL
     watch: 50    # >= watch      -> WATCH ; below -> AVOID FOR NOW

@@ -16,12 +16,12 @@ from src.config import env, load_config, resolve_recipients
 from src.data_sources import earnings, macro, news, prices
 from src.llm import claude
 from src.reporting import email_template, ses
-from src.scoring import regimes
-from src.scoring.actions import action_for_score
+from src.scoring import regimes, selection
 from src.scoring.composite import composite_score
 from src.scoring.earnings_guard import apply_earnings_guard
 from src.scoring.score import score_metrics
 from src.scoring.sentiment import sentiment_tilt
+from src.scoring.smoothing import smoothed_score
 from src.scoring.technicals import compute_metrics
 from src.storage import s3, ssm
 
@@ -41,14 +41,22 @@ def build_results(
 
     The overlay inputs are pre-fetched by ``run()`` based on feature flags, so
     this stays pure and unit-testable (no network).
+
+    Scoring happens in two passes: every ticker is scored independently, then
+    actions are assigned across the sorted field, because rank mode can only
+    decide a tier once it knows what else is on offer.
     """
     scoring = config.get("scoring", {})
-    thresholds = scoring.get("thresholds", {})
     tilts = scoring.get("tilts", {})
     macro_cap = tilts.get("macro_max", 8)
     sentiment_cap = tilts.get("sentiment_max", 10)
     themes_map = config.get("themes", {})
     guard_window = config.get("earnings", {}).get("guard_window_days", 5)
+    data_cfg = config.get("data", {})
+    lookback = int(data_cfg.get("lookback_days", 252))
+    smoothing_days = int(scoring.get("smoothing_days", 40))
+
+    benchmarks = set(config.get("benchmarks", []) or [])
 
     active_regimes = active_regimes or []
     earnings_days = earnings_days or {}
@@ -56,44 +64,55 @@ def build_results(
 
     results: list[dict] = []
     for ticker, closes in closes_by_ticker.items():
-        metrics = compute_metrics(closes)
+        # Metrics always describe the most recent `lookback` sessions, never the
+        # extra history fetched to make smoothing possible — otherwise the
+        # "52-week high" would silently become an 18-month high.
+        metrics = compute_metrics(closes[-lookback:])
         if not metrics:
             logger.warning("Skipping %s: no usable metrics", ticker)
             continue
 
         scored = score_metrics(metrics, config)
-        base = scored["score"]
+        base = smoothed_score(closes, config, smoothing_days, lookback)
+        if base is None:
+            base = scored["score"]
 
         m_tilt, m_tags = regimes.macro_tilt(ticker, active_regimes, themes_map, macro_cap)
         s_tilt, s_summary = sentiment_tilt(sentiment.get(ticker), sentiment_cap)
 
-        final = composite_score(base, m_tilt, s_tilt)
-        action = action_for_score(final, thresholds)
-
-        action, earnings_tag = apply_earnings_guard(
-            action, earnings_days.get(ticker), guard_window
-        )
-
-        tags = list(m_tags)
-        if earnings_tag:
-            tags.append(earnings_tag)
-
         results.append(
             {
                 "ticker": ticker,
-                "score": round(final, 1),
-                "base_score": base,
-                "action": action.label,
+                "is_benchmark": ticker in benchmarks,
+                "score": round(composite_score(base, m_tilt, s_tilt), 1),
+                "base_score": round(base, 1),
+                "latest_score": scored["score"],
                 "metrics": metrics,
                 "components": scored["components"],
                 "breakdown": scored["breakdown"],
                 "macro_tilt": m_tilt,
                 "sentiment_tilt": s_tilt,
-                "tags": tags,
+                "tags": list(m_tags),
                 "summary": s_summary,
             }
         )
+
     results.sort(key=lambda r: r["score"], reverse=True)
+
+    rank = 0
+    for row, action in zip(results, selection.assign_actions(results, scoring)):
+        action, earnings_tag = apply_earnings_guard(
+            action, earnings_days.get(row["ticker"]), guard_window
+        )
+        if earnings_tag:
+            row["tags"].append(earnings_tag)
+        if row["is_benchmark"]:
+            row["rank"] = None
+        else:
+            rank += 1
+            row["rank"] = rank
+        row["action"] = action.label
+
     return results
 
 
@@ -123,10 +142,17 @@ def run(config: dict, send: bool | None = None) -> dict:
     features = config.get("features", {})
     period = config.get("data", {}).get("history_period", "1y")
     watchlist = config.get("watchlist", [])
+    benchmarks = config.get("benchmarks", []) or []
     region = env("AWS_REGION")
 
-    logger.info("Fetching %d tickers (%s history)", len(watchlist), period)
-    closes_by_ticker = prices.fetch_many(watchlist, period=period)
+    # Benchmarks ride along so the report can show them, but selection excludes
+    # them from the ranked field.
+    to_fetch = list(dict.fromkeys(list(watchlist) + list(benchmarks)))
+    logger.info(
+        "Fetching %d tickers (%d watchlist + %d benchmarks, %s history)",
+        len(to_fetch), len(watchlist), len(benchmarks), period,
+    )
+    closes_by_ticker = prices.fetch_many(to_fetch, period=period)
     tickers = list(closes_by_ticker)
 
     # --- v2 context overlays (each gated by a feature flag) ---

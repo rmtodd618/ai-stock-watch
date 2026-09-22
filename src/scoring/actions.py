@@ -13,6 +13,9 @@ class Action(Enum):
     STARTER = "STARTER SIGNAL"
     WATCH = "WATCH"
     AVOID = "AVOID FOR NOW"
+    # Index/ETF rows carried for comparison only. They are scored and shown but
+    # never ranked, so they cannot take a slot in the flagged set.
+    BENCHMARK = "BENCHMARK"
 
     @property
     def label(self) -> str:

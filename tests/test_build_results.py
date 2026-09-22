@@ -56,3 +56,26 @@ def test_sentiment_summary_attached():
     r = results[0]
     assert r["sentiment_tilt"] == 5.0  # 0.5 * 10 * 1.0
     assert r["summary"] == "Big contract win"
+
+
+def test_benchmark_rows_are_scored_but_never_ranked():
+    cfg = _config()
+    cfg["benchmarks"] = ["SPY"]
+    cfg["scoring"]["selection"] = {"mode": "rank", "top_n": 1, "bench_n": 0}
+    results = build_results(cfg, {"SPY": STRONG, "XOM": STRONG})
+    by_ticker = {r["ticker"]: r for r in results}
+    assert by_ticker["SPY"]["action"] == "BENCHMARK"
+    assert by_ticker["SPY"]["rank"] is None
+    assert by_ticker["SPY"]["score"] > 0          # still scored
+    assert by_ticker["XOM"]["action"] == "ADD SIGNAL"
+    assert by_ticker["XOM"]["rank"] == 1          # rank ignores the benchmark
+
+
+def test_smoothed_score_is_the_reported_score():
+    from src.scoring.smoothing import smoothed_score
+    cfg = _config()
+    cfg["scoring"]["smoothing_days"] = 20
+    results = build_results(cfg, {"XOM": STRONG})
+    expected = smoothed_score(STRONG, cfg, 20, 252)
+    assert results[0]["score"] == round(expected, 1)
+    assert results[0]["latest_score"] != results[0]["score"]  # raw differs from smoothed
