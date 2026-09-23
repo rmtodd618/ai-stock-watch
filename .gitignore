@@ -9,6 +9,10 @@ report.html
 report.txt
 *.report.json
 
+# Reconstructed/archived score snapshots (regenerate with
+# scripts/backfill_snapshots.py; the live ones live in S3)
+snapshots/
+
 # Python
 __pycache__/
 *.py[cod]
