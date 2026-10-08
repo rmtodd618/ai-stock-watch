@@ -173,6 +173,30 @@ overlay on a regime read at the time. The script refuses to run while any of the
 is enabled rather than emit rows that quietly differ in meaning from live ones.
 Those only accumulate going forward.
 
+### Measuring whether it works
+
+```bash
+python scripts/evaluate_snapshots.py --snapshots ./snapshots
+python scripts/evaluate_snapshots.py --bucket my-report-bucket --source live
+```
+
+Three measures, in increasing order of how much they can flatter you:
+
+| Measure | Answers |
+|---------|---------|
+| **Rank IC** | Did the score order the names correctly? Cross-sectional, so a rising market cannot inflate it. |
+| **Tier returns** | Are the tiers ordered at all — and in particular, is `AVOID` actually worse than the baseline? |
+| **Portfolio** | What the flagged set returned, against *holding the whole watchlist* and against SPY. |
+
+The watchlist comparison is the one that decides whether the tool earned its
+keep. Beating SPY while trailing your own watchlist means the watchlist did the
+work and the scoring added nothing.
+
+Use `--source live` to exclude reconstructed rows. Backfilled rows restate what
+today's rules would have said on a watchlist picked knowing the outcomes; they
+measure the machinery, not skill. Only the live population answers the real
+question, and it grows one session per day.
+
 Copy `.env.example` to `.env` for local use (git-ignored). In Lambda these come from
 the SAM template parameters / function environment.
 
@@ -252,9 +276,11 @@ ai-stock-watch/
     storage/
       s3.py               # archive report to S3 (optional)
   backfill.py           # pure: price history -> reconstructed past snapshots
+  evaluate.py           # pure: snapshots + prices -> IC, tier returns, portfolio
   scripts/
     build-lambda.sh       # Docker-free Lambda artifact
     backfill_snapshots.py # CLI: reconstruct and write historical snapshots
+    evaluate_snapshots.py # CLI: score the record against what actually happened
   infra/template.yaml     # AWS SAM: Lambda + EventBridge + SES + S3
   tests/                  # pytest, no network
   config.example.yaml

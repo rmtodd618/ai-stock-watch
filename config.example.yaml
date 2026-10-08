@@ -72,18 +72,27 @@ scoring:
     starter: 65  # >= starter    -> STARTER SIGNAL
     watch: 50    # >= watch      -> WATCH ; below -> AVOID FOR NOW
   # Weights sum to 100 so the score lands in 0..100.
+  # Momentum is deliberately 0: measured on its own against forward returns its
+  # rank IC is +0.019 (t=2.4), i.e. barely distinguishable from noise, and it
+  # mostly ejects you from names that are moving. Zeroing it and redistributing
+  # its 20 points raised the 21-session IC from +0.091 to +0.103 and cut
+  # annualised turnover from ~970% to ~735%. Restore it to 20 (and drop the
+  # others back to 25/15/15/25) for the v1 behaviour.
   weights:
-    long_term_trend: 25   # price vs 200-day MA
-    medium_term_trend: 15 # price vs 50-day MA
-    trend_structure: 15   # 50-day MA vs 200-day MA (golden-cross posture)
-    pullback: 25          # healthy dip off the 52-week high
-    momentum: 20          # calm short-term action (penalize falling knives/spikes)
+    long_term_trend: 32   # price vs 200-day MA
+    medium_term_trend: 18 # price vs 50-day MA
+    trend_structure: 18   # 50-day MA vs 200-day MA (golden-cross posture)
+    pullback: 32          # healthy dip off the 52-week high
+    momentum: 0           # see above
   pullback:
     # "% below 52-week high" band that earns full pullback credit.
     ideal_min: 8
     ideal_max: 20
     # More than this far below the high => treated as a broken setup (~0 credit).
-    broken_below: 45
+    # 45 was a cliff, not a ramp: on 2026-06-26 PLTR sat 45.5% below its high, so
+    # every component pinned at zero and it scored 0.0 — then rose 62%. 60 keeps
+    # the "broken setup" idea while giving deep drawdowns a gradient.
+    broken_below: 60
   momentum:
     # 5-day % move beyond this magnitude scores 0 (too hot or falling knife).
     tolerance_pct: 12
