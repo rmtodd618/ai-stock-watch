@@ -31,6 +31,10 @@ watchlist:
   - VRT
   - ANET
   - CLS
+  # Space. SPCX listed 2026-06-12, so until mid-2027 it has no 200-day MA (two
+  # components score a neutral 0.5) and its "52-week high" is the IPO spike.
+  # Read its score as unreliable until it has ~252 sessions of history.
+  - SPCX
 
 # Index/ETF rows shown for comparison. They are fetched and scored like anything
 # else, but never ranked — otherwise SPY and QQQ would quietly take slots in the
