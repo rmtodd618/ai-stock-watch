@@ -16,6 +16,9 @@ class Action(Enum):
     # Index/ETF rows carried for comparison only. They are scored and shown but
     # never ranked, so they cannot take a slot in the flagged set.
     BENCHMARK = "BENCHMARK"
+    # Too little price history for the score to mean anything — a recent IPO.
+    # Shown so you can watch it build history, never ranked.
+    INSUFFICIENT = "NOT ENOUGH HISTORY"
 
     @property
     def label(self) -> str:

@@ -80,7 +80,7 @@ def reconstruct(
     *,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    min_sessions: int = 30,
+    min_sessions: Optional[int] = None,
     benchmark: Optional[str] = None,
 ) -> Iterator[tuple[str, dict]]:
     """Yield ``(session, snapshot)`` for each session in range, oldest first.
@@ -90,6 +90,9 @@ def reconstruct(
     including it would let it take a portfolio slot on noise.
     """
     check_features(config)
+
+    if min_sessions is None:
+        min_sessions = int((config.get("data", {}) or {}).get("min_sessions", 200))
 
     dates_by_ticker = {t: d for t, (d, _) in history.items()}
     calendar = trading_calendar(dates_by_ticker, benchmark)

@@ -126,12 +126,16 @@ def test_a_session_with_no_usable_history_is_skipped_entirely():
 
 def test_snapshots_are_stamped_as_reconstructed():
     """A backfilled row must never pass for a live observation."""
-    _, snap = next(iter(reconstruct(_config(), _history(), start="2026-02-05", benchmark="SPY")))
+    _, snap = next(
+        iter(reconstruct(_config(), _history(), start="2026-02-05", benchmark="SPY", min_sessions=1))
+    )
     assert snap["source"] == "backfill"
 
 
 def test_generated_at_is_the_session_being_reconstructed():
-    session, snap = next(iter(reconstruct(_config(), _history(), start="2026-02-05", benchmark="SPY")))
+    session, snap = next(
+        iter(reconstruct(_config(), _history(), start="2026-02-05", benchmark="SPY", min_sessions=1))
+    )
     assert snap["generated_at"] == session
 
 
@@ -142,8 +146,17 @@ def test_min_sessions_excludes_a_barely_listed_ticker():
         "NEW": (days[-3:], closes[-3:]),  # three sessions of history
         "SPY": _history()["SPY"],
     }
-    _, snap = next(iter(reconstruct(_config(), hist, start=days[-1], benchmark="SPY")))
+    _, snap = next(
+        iter(reconstruct(_config(), hist, start=days[-1], benchmark="SPY", min_sessions=30))
+    )
     assert "NEW" not in [r["ticker"] for r in snap["rows"]]
+
+
+def test_min_sessions_defaults_from_config():
+    """The backfill and the live path must use the same history requirement."""
+    cfg = _config()
+    cfg["data"] = {"min_sessions": 1000}
+    assert list(reconstruct(cfg, _history(), benchmark="SPY")) == []
 
 
 def test_reconstruction_refuses_when_a_v2_layer_is_on():

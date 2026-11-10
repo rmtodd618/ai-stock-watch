@@ -53,6 +53,12 @@ data:
   # separate from history_period so extra fetched history never leaks into the
   # "52-week high".
   lookback_days: 252
+  # Minimum sessions before a ticker can be ranked. Under this, compute_metrics
+  # cannot form a 200-day average and the score falls back to neutral
+  # placeholders — a six-session-old listing scores ~50 on no information, which
+  # under rank selection is enough to take a portfolio slot. Such names are still
+  # shown, tagged NOT ENOUGH HISTORY, so you can watch them season.
+  min_sessions: 200
 
 scoring:
   # Average the score over this many trailing sessions before ranking on it.

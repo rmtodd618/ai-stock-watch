@@ -16,7 +16,7 @@ Pure: takes rows and config, returns actions. No IO, no mutation.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 from src.scoring.actions import Action, action_for_score
 
@@ -34,12 +34,17 @@ def assign_actions(rows: Sequence[dict], scoring_cfg: dict) -> list[Action]:
     selection = scoring_cfg.get("selection", {}) or {}
     mode = selection.get("mode", "rank")
 
+    def _excluded(row: dict) -> Optional[Action]:
+        """Rows that are shown but must never compete for a slot."""
+        if row.get("is_benchmark"):
+            return Action.BENCHMARK
+        if row.get("insufficient_history"):
+            return Action.INSUFFICIENT
+        return None
+
     if mode != "rank":
         return [
-            Action.BENCHMARK
-            if r.get("is_benchmark")
-            else action_for_score(r["score"], thresholds)
-            for r in rows
+            _excluded(r) or action_for_score(r["score"], thresholds) for r in rows
         ]
 
     top_n = int(selection.get("top_n", DEFAULT_TOP_N))
@@ -49,9 +54,9 @@ def assign_actions(rows: Sequence[dict], scoring_cfg: dict) -> list[Action]:
     actions: list[Action] = []
     rank = 0
     for row in rows:
-        # Benchmarks are scored for context but must never consume a slot.
-        if row.get("is_benchmark"):
-            actions.append(Action.BENCHMARK)
+        excluded = _excluded(row)
+        if excluded is not None:
+            actions.append(excluded)
             continue
         rank += 1
         if rank <= top_n:

@@ -79,3 +79,18 @@ def test_smoothed_score_is_the_reported_score():
     expected = smoothed_score(STRONG, cfg, 20, 252)
     assert results[0]["score"] == round(expected, 1)
     assert results[0]["latest_score"] != results[0]["score"]  # raw differs from smoothed
+
+
+def test_a_recent_listing_is_shown_but_not_ranked():
+    """Guards the regression rank mode introduced: ~50 from placeholders is
+    enough to win a slot in a small field."""
+    cfg = _config()
+    cfg["data"] = {"min_sessions": 200}
+    cfg["scoring"]["selection"] = {"mode": "rank", "top_n": 8, "bench_n": 0}
+    results = build_results(cfg, {"MATURE": STRONG, "NEWCO": [50.0, 52.0, 51.5, 53.0]})
+    by_ticker = {r["ticker"]: r for r in results}
+    assert by_ticker["NEWCO"]["action"] == "NOT ENOUGH HISTORY"
+    assert by_ticker["NEWCO"]["rank"] is None
+    assert by_ticker["NEWCO"]["insufficient_history"] is True
+    assert by_ticker["MATURE"]["rank"] == 1
+    assert by_ticker["MATURE"]["insufficient_history"] is False

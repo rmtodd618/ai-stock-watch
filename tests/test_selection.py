@@ -81,3 +81,20 @@ def test_benchmarks_are_labelled_in_threshold_mode_too():
     rows = [{"ticker": "SPY", "score": 95, "is_benchmark": True}, {"ticker": "A", "score": 90}]
     actions = assign_actions(rows, _cfg(mode="threshold"))
     assert actions == [Action.BENCHMARK, Action.ADD]
+
+
+def test_recent_listings_never_take_a_slot():
+    """A six-session-old IPO scores ~50 on placeholders; rank mode must skip it."""
+    rows = [
+        {"ticker": "NEWCO", "score": 90, "insufficient_history": True},
+        {"ticker": "A", "score": 70},
+        {"ticker": "B", "score": 60},
+        {"ticker": "C", "score": 55},
+    ]
+    actions = assign_actions(rows, _cfg(top_n=2, bench_n=0))
+    assert actions == [Action.INSUFFICIENT, Action.ADD, Action.ADD, Action.WATCH]
+
+
+def test_recent_listings_are_flagged_in_threshold_mode_too():
+    rows = [{"ticker": "NEWCO", "score": 90, "insufficient_history": True}]
+    assert assign_actions(rows, _cfg(mode="threshold")) == [Action.INSUFFICIENT]

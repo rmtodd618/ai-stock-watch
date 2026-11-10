@@ -55,6 +55,11 @@ def build_results(
     data_cfg = config.get("data", {})
     lookback = int(data_cfg.get("lookback_days", 252))
     smoothing_days = int(scoring.get("smoothing_days", 40))
+    # Below this many sessions the score is mostly placeholders: compute_metrics
+    # returns None for a moving average it cannot form, which score_metrics reads
+    # as the neutral 0.5. A recent IPO therefore scores ~50 on no information,
+    # and under rank selection a ~50 can take a real slot. Flag instead.
+    min_sessions = int(data_cfg.get("min_sessions", 200))
 
     benchmarks = set(config.get("benchmarks", []) or [])
 
@@ -84,6 +89,7 @@ def build_results(
             {
                 "ticker": ticker,
                 "is_benchmark": ticker in benchmarks,
+                "insufficient_history": metrics["data_points"] < min_sessions,
                 "score": round(composite_score(base, m_tilt, s_tilt), 1),
                 "base_score": round(base, 1),
                 "latest_score": scored["score"],
@@ -106,7 +112,7 @@ def build_results(
         )
         if earnings_tag:
             row["tags"].append(earnings_tag)
-        if row["is_benchmark"]:
+        if row["is_benchmark"] or row["insufficient_history"]:
             row["rank"] = None
         else:
             rank += 1

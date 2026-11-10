@@ -14,6 +14,7 @@ _ACTION_COLORS = {
     "WATCH": "#8a6d1f",
     "AVOID FOR NOW": "#9a3b3b",
     "BENCHMARK": "#6b7585",
+    "NOT ENOUGH HISTORY": "#6b7585",
 }
 
 _COMPONENT_ORDER = [
