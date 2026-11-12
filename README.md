@@ -193,6 +193,20 @@ overlay on a regime read at the time. The script refuses to run while any of the
 is enabled rather than emit rows that quietly differ in meaning from live ones.
 Those only accumulate going forward.
 
+### The dashboard
+
+`scripts/build_dashboard.py` regenerates the live-record page's data from the
+archived snapshots:
+
+```bash
+python scripts/build_dashboard.py --bucket my-report-bucket --out dash.json
+```
+
+The page itself is static — it carries its data inline, so it shows whatever was
+true when it was last built, and the header states the window it covers. The
+weekly Evaluate workflow rebuilds `dash.json` and keeps it as a build artifact;
+republishing the page is a separate manual step.
+
 ### Measuring whether it works
 
 ```bash
@@ -301,6 +315,7 @@ ai-stock-watch/
     build-lambda.sh       # Docker-free Lambda artifact
     backfill_snapshots.py # CLI: reconstruct and write historical snapshots
     evaluate_snapshots.py # CLI: score the record against what actually happened
+    build_dashboard.py    # CLI: regenerate the dashboard data from snapshots
   infra/template.yaml     # AWS SAM: Lambda + EventBridge + SES + S3
   tests/                  # pytest, no network
   config.example.yaml

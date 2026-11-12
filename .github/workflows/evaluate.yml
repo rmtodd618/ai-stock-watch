@@ -1,0 +1,80 @@
+name: Evaluate
+
+# The measurement harness existed but nothing ran it, so the live record only
+# got scored when somebody remembered to ask. Once a week is enough: the record
+# grows five sessions in that time, and the answer it is working towards takes
+# years rather than days.
+on:
+  schedule:
+    - cron: "0 13 * * MON"   # Mondays, after the weekend has settled
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check credentials are configured
+        id: preflight
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "AWS_DEPLOY_ROLE_ARN is not set — skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assume the role
+        if: steps.preflight.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install dependencies
+        if: steps.preflight.outputs.ready == 'true'
+        run: pip install -r requirements.txt boto3
+
+      - name: Score the live record
+        if: steps.preflight.outputs.ready == 'true'
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name ai-stock-watch \
+            --query 'Stacks[0].Outputs[?OutputKey==`ReportBucketName`].OutputValue' \
+            --output text)
+          echo "## Live signal record" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Only the live population. Backfilled rows restate what today's rules
+          # would have said on a watchlist chosen knowing the outcomes, so
+          # pooling them here would quietly flatter the result.
+          python scripts/evaluate_snapshots.py \
+            --bucket "$BUCKET" --source live --horizons 5,21 \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rebuild the dashboard data
+        if: steps.preflight.outputs.ready == 'true'
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name ai-stock-watch \
+            --query 'Stacks[0].Outputs[?OutputKey==`ReportBucketName`].OutputValue' \
+            --output text)
+          python scripts/build_dashboard.py --bucket "$BUCKET" --out dash.json
+
+      - name: Keep the data for the dashboard rebuild
+        if: steps.preflight.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-data
+          path: dash.json
+          retention-days: 90
