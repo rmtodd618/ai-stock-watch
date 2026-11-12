@@ -28,7 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from src.config import env, load_config  # noqa: E402
 from src.data_sources import prices as price_source  # noqa: E402
-from src.evaluate import portfolio, rank_ic, tier_returns  # noqa: E402
+from src.evaluate import drop_incomplete, portfolio, rank_ic, tier_returns  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("evaluate")
@@ -48,6 +48,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--horizons", default="5,21,63", help="Forward horizons in sessions.")
     p.add_argument("--cost-bps", type=float, default=20.0, help="Round-trip cost assumption.")
     p.add_argument("--benchmark", default="SPY", help="Ticker whose calendar defines sessions.")
+    p.add_argument("--include-incomplete", action="store_true",
+                   help="Score sessions that were missing part of their universe (default: skip).")
     return p.parse_args()
 
 
@@ -92,6 +94,14 @@ def main() -> int:
     if args.until:
         snaps = [s for s in snaps if s.get("generated_at", "")[:10] <= args.until]
     snaps.sort(key=lambda s: s.get("generated_at", ""))
+
+    if not args.include_incomplete:
+        snaps, dropped = drop_incomplete(snaps)
+        if dropped:
+            logger.warning(
+                "Skipped %d session(s) that were missing part of their universe: %s",
+                len(dropped), ", ".join(dropped),
+            )
 
     if len(snaps) < 2:
         logger.error("Only %d snapshot(s) after filtering — nothing to measure.", len(snaps))

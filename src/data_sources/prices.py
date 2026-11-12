@@ -7,7 +7,7 @@ can be swapped for a paid data provider without touching the scoring code.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +59,39 @@ def fetch_history(ticker: str, period: str = "max") -> Optional[tuple[list[str],
     return [d.strftime("%Y-%m-%d") for d in closes.index], [float(c) for c in closes]
 
 
-def fetch_many(tickers: list[str], period: str = "1y") -> dict[str, list[float]]:
-    """Fetch closes for several tickers. Missing/failed tickers are omitted."""
+class FetchResult(NamedTuple):
+    """What came back, and just as importantly what did not.
+
+    The previous version returned a bare dict, so a ticker that failed to
+    download simply was not in it. Nothing downstream could tell a rate-limited
+    fetch from a ticker that was never requested, which meant a run with half
+    the universe missing produced a normal-looking report and a snapshot that
+    looked like a valid observation.
+    """
+
+    closes: dict[str, list[float]]
+    requested: list[str]
+    failed: list[str]
+
+    @property
+    def coverage(self) -> float:
+        """Fraction of requested tickers that actually returned data."""
+        return len(self.closes) / len(self.requested) if self.requested else 0.0
+
+
+def fetch_many(tickers: list[str], period: str = "1y") -> FetchResult:
+    """Fetch closes for several tickers, reporting which ones failed."""
     out: dict[str, list[float]] = {}
+    failed: list[str] = []
     for ticker in tickers:
         closes = fetch_closes(ticker, period=period)
         if closes:
             out[ticker] = closes
-    return out
+        else:
+            failed.append(ticker)
+    if failed:
+        logger.error(
+            "Price fetch failed for %d of %d tickers: %s",
+            len(failed), len(tickers), ", ".join(failed),
+        )
+    return FetchResult(closes=out, requested=list(tickers), failed=failed)

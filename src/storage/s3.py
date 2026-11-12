@@ -61,6 +61,7 @@ def build_snapshot(
     config: dict,
     generated_at: str,
     source: str = "live",
+    coverage: Optional[dict] = None,
 ) -> dict:
     """Structured record of one run: the rows plus the rules that produced them.
 
@@ -82,10 +83,24 @@ def build_snapshot(
         row["tags"] = list(r.get("tags", []))
         rows.append(row)
 
+    if coverage is None:
+        tickers = [r.get("ticker") for r in results if r.get("ticker")]
+        coverage = {
+            "requested": tickers,
+            "fetched": tickers,
+            "missing": [],
+            "complete": True,
+            "degraded": False,
+        }
+
     return {
-        "schema": 1,
+        "schema": 2,
         "source": source,
         "generated_at": generated_at,
+        # Which tickers were asked for versus which arrived. Without this a
+        # reader cannot tell a ticker that was not in the watchlist that day
+        # from one whose download failed, and those mean opposite things.
+        "coverage": coverage,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "rules": {
             "selection": scoring.get("selection", {}),

@@ -1,6 +1,11 @@
 # Runtime dependencies packaged into the Lambda artifact.
 # boto3 is intentionally omitted — it is provided by the Lambda runtime.
 yfinance>=0.2.40
+# yfinance uses curl_cffi to impersonate a browser's TLS fingerprint. Without
+# it the client falls back to plain requests and Yahoo rate-limits or blocks it
+# — which is what the function was doing in production, logging a warning that
+# nothing acted on.
+curl_cffi>=0.7
 PyYAML>=6.0
 # Only needed when the news_sentiment feature is enabled.
 anthropic>=0.40

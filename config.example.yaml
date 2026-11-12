@@ -59,6 +59,12 @@ data:
   # under rank selection is enough to take a portfolio slot. Such names are still
   # shown, tagged NOT ENOUGH HISTORY, so you can watch them season.
   min_sessions: 200
+  # Fraction of the watchlist that must actually download before a run counts as
+  # complete. Below this the report still goes out, clearly marked, the snapshot
+  # records which tickers were missing, and an ERROR is logged so the alarm
+  # fires. Evaluation skips incomplete sessions — a day missing half its
+  # universe is not an observation.
+  min_coverage: 0.9
 
 scoring:
   # Average the score over this many trailing sessions before ranking on it.

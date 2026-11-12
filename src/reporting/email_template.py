@@ -94,9 +94,19 @@ def render_text(
     disclaimer: str,
     previous: Optional[dict] = None,
     dashboard_url: Optional[str] = None,
+    coverage: Optional[dict] = None,
 ) -> str:
     changes = compute_changes(results, previous)
     lines = [title, generated_at, "", summary_line(results, changes), ""]
+
+    missing = (coverage or {}).get("missing") or []
+    if missing:
+        lines += [
+            f"!! INCOMPLETE RUN — no price data for {len(missing)} ticker(s): "
+            + ", ".join(missing),
+            "   The ranking below was computed without them.",
+            "",
+        ]
 
     if changes["comparable"] and (changes["entered"] or changes["left"]):
         if changes["entered"]:
@@ -137,9 +147,21 @@ def render_html(
     disclaimer: str,
     previous: Optional[dict] = None,
     dashboard_url: Optional[str] = None,
+    coverage: Optional[dict] = None,
 ) -> str:
     changes = compute_changes(results, previous)
     summary = summary_line(results, changes)
+
+    missing = (coverage or {}).get("missing") or []
+    warning = ""
+    if missing:
+        warning = (
+            '<div style="padding:12px 24px;background:#fdf2f2;'
+            'border-bottom:1px solid #f3dcdc;font-size:13px;color:#9a3b3b">'
+            f'<b>Incomplete run</b> &mdash; no price data for {len(missing)} '
+            f'ticker(s): {", ".join(missing)}. '
+            'The ranking below was computed without them.</div>'
+        )
 
     moved = ""
     if changes["comparable"] and (changes["entered"] or changes["left"]):
@@ -235,6 +257,7 @@ def render_html(
       <div class="sub">{generated_at}</div>
       <div class="sum">{summary}</div>
     </div>
+    {warning}
     {moved}
     <table>
       <thead>

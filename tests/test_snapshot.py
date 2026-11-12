@@ -89,4 +89,23 @@ def test_missing_metrics_become_null_not_an_error():
 def test_snapshot_is_json_serialisable():
     import json
 
-    assert json.loads(json.dumps(_snap()))["schema"] == 1
+    assert json.loads(json.dumps(_snap()))["schema"] == 2
+
+
+def test_coverage_is_recorded_so_missing_cannot_be_mistaken_for_unrequested():
+    cov = {
+        "requested": ["ANET", "SPY", "MU"],
+        "fetched": ["ANET", "SPY"],
+        "missing": ["MU"],
+        "complete": False,
+        "degraded": True,
+    }
+    snap = build_snapshot(RESULTS, CONFIG, "2026-11-12 22:00 UTC", coverage=cov)
+    assert snap["coverage"]["missing"] == ["MU"]
+    assert snap["coverage"]["complete"] is False
+
+
+def test_coverage_defaults_to_complete_when_not_supplied():
+    snap = build_snapshot(RESULTS, CONFIG, "2026-11-12 22:00 UTC")
+    assert snap["coverage"]["complete"] is True
+    assert snap["coverage"]["missing"] == []

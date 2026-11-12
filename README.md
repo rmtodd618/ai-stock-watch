@@ -136,7 +136,27 @@ With archiving on, each run writes two objects:
 | Key | What it is |
 |-----|------------|
 | `reports/YYYY/MM/DD.html` | The rendered email, for reading back. Expires after 90 days. |
-| `snapshots/YYYY-MM-DD.json` | The structured rows — ticker, rank, action, score, and the metrics behind it — plus the config that produced them. Kept indefinitely. |
+| `snapshots/YYYY-MM-DD.json` | The structured rows — ticker, rank, action, score, and the metrics behind it — plus the config that produced them and which tickers actually downloaded. Kept indefinitely. |
+
+### When the data source fails
+
+The price feed is an unofficial Yahoo scraper, and it will sometimes return
+nothing for some tickers. That used to pass unnoticed: failed tickers were
+simply absent from the dict, so a run that lost half its universe still ranked
+whatever survived, picked a "top 8" from it, and wrote a snapshot that looked
+like a valid observation.
+
+Each run now records `coverage` — requested, fetched, and missing — so a ticker
+that failed can never be confused with one that was not on the watchlist that
+day. Below `data.min_coverage` the report still goes out but is clearly marked
+incomplete, an ERROR is logged so the CloudWatch alarm fires, and
+`evaluate_snapshots.py` skips those sessions unless you pass
+`--include-incomplete`. If nothing downloads at all the run raises rather than
+publishing a report with no universe.
+
+`curl_cffi` is pinned for the same reason: without it yfinance falls back to
+plain requests and Yahoo throttles the client, which is what production was
+quietly doing.
 
 The snapshots are the point. An archived email is not data you can analyse; the
 JSON accumulates into a genuine out-of-sample record of what the tool actually

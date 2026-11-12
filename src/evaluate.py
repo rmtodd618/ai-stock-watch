@@ -38,6 +38,30 @@ logger = logging.getLogger(__name__)
 HELD_ACTIONS = ("ADD SIGNAL",)
 
 
+def is_complete(snapshot: dict) -> bool:
+    """Whether a session saw its whole universe.
+
+    Snapshots written before coverage was recorded (schema 1) have no way to
+    say, and are treated as complete — the alternative is discarding the entire
+    existing record over a doubt.
+    """
+    coverage = snapshot.get("coverage")
+    if not isinstance(coverage, dict):
+        return True
+    return bool(coverage.get("complete", True))
+
+
+def drop_incomplete(snapshots: Iterable[dict]) -> tuple[list[dict], list[str]]:
+    """Split snapshots into usable ones and the dates that were dropped."""
+    keep, dropped = [], []
+    for snap in snapshots:
+        if is_complete(snap):
+            keep.append(snap)
+        else:
+            dropped.append((snap.get("generated_at") or "")[:10])
+    return keep, dropped
+
+
 # --- small stats helpers (kept local so the package needs no scipy) ----------
 
 def _rank(values: Sequence[float]) -> list[float]:

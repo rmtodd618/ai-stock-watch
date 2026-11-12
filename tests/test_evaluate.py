@@ -210,3 +210,35 @@ def test_portfolio_with_nothing_held_is_flat():
 
 def test_portfolio_needs_two_sessions():
     assert portfolio([], {}, SESSIONS)["sessions"] == 0
+
+
+# --- coverage gating -----------------------------------------------------------
+
+from src.evaluate import drop_incomplete, is_complete  # noqa: E402
+
+
+def test_a_session_missing_part_of_its_universe_is_not_an_observation():
+    bad = {"generated_at": "2026-11-12", "coverage": {"complete": False}}
+    assert is_complete(bad) is False
+
+
+def test_a_full_session_is_usable():
+    good = {"generated_at": "2026-11-12", "coverage": {"complete": True}}
+    assert is_complete(good) is True
+
+
+def test_snapshots_predating_coverage_are_kept():
+    """Schema 1 rows cannot say; discarding the whole existing record is worse."""
+    assert is_complete({"generated_at": "2026-10-08"}) is True
+    assert is_complete({"generated_at": "2026-10-08", "coverage": None}) is True
+
+
+def test_drop_incomplete_reports_which_dates_went():
+    snaps = [
+        {"generated_at": "2026-11-10", "coverage": {"complete": True}},
+        {"generated_at": "2026-11-11", "coverage": {"complete": False}},
+        {"generated_at": "2026-11-12"},
+    ]
+    keep, dropped = drop_incomplete(snaps)
+    assert [s["generated_at"] for s in keep] == ["2026-11-10", "2026-11-12"]
+    assert dropped == ["2026-11-11"]

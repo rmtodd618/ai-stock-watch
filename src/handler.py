@@ -158,8 +158,27 @@ def run(config: dict, send: bool | None = None) -> dict:
         "Fetching %d tickers (%d watchlist + %d benchmarks, %s history)",
         len(to_fetch), len(watchlist), len(benchmarks), period,
     )
-    closes_by_ticker = prices.fetch_many(to_fetch, period=period)
+    fetched = prices.fetch_many(to_fetch, period=period)
+    closes_by_ticker = fetched.closes
     tickers = list(closes_by_ticker)
+
+    # A run that quietly lost half its universe still produces a plausible
+    # report: it ranks whatever survived and picks a "top N" from that. Decide
+    # explicitly what to do rather than letting the gap pass unremarked.
+    min_coverage = float(config.get("data", {}).get("min_coverage", 0.9))
+    if not closes_by_ticker:
+        raise RuntimeError(
+            f"No price data for any of {len(to_fetch)} tickers — refusing to "
+            "publish a report with no universe."
+        )
+    degraded = fetched.coverage < min_coverage
+    if degraded:
+        logger.error(
+            "Only %d of %d tickers returned data (%.0f%% < %.0f%% required); "
+            "the report and snapshot will be marked incomplete. Missing: %s",
+            len(closes_by_ticker), len(to_fetch), fetched.coverage * 100,
+            min_coverage * 100, ", ".join(fetched.failed),
+        )
 
     # --- v2 context overlays (each gated by a feature flag) ---
     active = None
@@ -214,11 +233,19 @@ def run(config: dict, send: bool | None = None) -> dict:
             region=region,
         )
 
+    coverage = {
+        "requested": fetched.requested,
+        "fetched": sorted(closes_by_ticker),
+        "missing": fetched.failed,
+        "complete": not fetched.failed,
+        "degraded": degraded,
+    }
+
     html = email_template.render_html(
-        results, title, generated_at, disclaimer, previous, dashboard_url
+        results, title, generated_at, disclaimer, previous, dashboard_url, coverage
     )
     text = email_template.render_text(
-        results, title, generated_at, disclaimer, previous, dashboard_url
+        results, title, generated_at, disclaimer, previous, dashboard_url, coverage
     )
 
     should_send = report_cfg.get("email_enabled", False) if send is None else send
@@ -242,7 +269,7 @@ def run(config: dict, send: bool | None = None) -> dict:
             s3.save_snapshot(
                 bucket,
                 f"snapshots/{stamp.strftime('%Y-%m-%d')}.json",
-                s3.build_snapshot(results, config, generated_at),
+                s3.build_snapshot(results, config, generated_at, coverage=coverage),
                 region=region,
             )
         else:
@@ -254,6 +281,7 @@ def run(config: dict, send: bool | None = None) -> dict:
     return {
         "generated_at": generated_at,
         "count": len(results),
+        "coverage": coverage,
         "results": results,
         "html": html,
         "text": text,
