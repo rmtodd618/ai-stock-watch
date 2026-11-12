@@ -199,9 +199,27 @@ def run(config: dict, send: bool | None = None) -> dict:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     title = report_cfg.get("title", "AI Stock Watch")
     disclaimer = config.get("disclaimer", "")
+    dashboard_url = env(report_cfg.get("dashboard_url_env_var"))
 
-    html = email_template.render_html(results, title, generated_at, disclaimer)
-    text = email_template.render_text(results, title, generated_at, disclaimer)
+    # Yesterday's archived snapshot, so the report can lead with what moved
+    # rather than a table that looks identical every day. Read before today's
+    # is written, and never allowed to fail the run.
+    bucket = env(report_cfg.get("s3_bucket_env_var"))
+    previous = None
+    if bucket:
+        previous = s3.load_previous_snapshot(
+            bucket,
+            prefix="snapshots",
+            exclude_key=f"snapshots/{datetime.now(timezone.utc):%Y-%m-%d}.json",
+            region=region,
+        )
+
+    html = email_template.render_html(
+        results, title, generated_at, disclaimer, previous, dashboard_url
+    )
+    text = email_template.render_text(
+        results, title, generated_at, disclaimer, previous, dashboard_url
+    )
 
     should_send = report_cfg.get("email_enabled", False) if send is None else send
     message_id = None
@@ -212,7 +230,6 @@ def run(config: dict, send: bool | None = None) -> dict:
         message_id = ses.send_email(sender, recipients, subject, html, text, region)
 
     if report_cfg.get("save_to_s3", False):
-        bucket = env(report_cfg.get("s3_bucket_env_var"))
         if bucket:
             stamp = datetime.now(timezone.utc)
             # The rendered email, for reading back.

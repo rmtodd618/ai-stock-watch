@@ -112,3 +112,43 @@ def save_snapshot(
         content_type="application/json",
         region=region,
     )
+
+
+def load_previous_snapshot(
+    bucket: str,
+    prefix: str = "snapshots",
+    exclude_key: Optional[str] = None,
+    region: Optional[str] = None,
+) -> Optional[dict]:
+    """The most recent archived snapshot, so a report can say what changed.
+
+    Keys are ``snapshots/YYYY-MM-DD.json``, which sort lexicographically in date
+    order, so the newest is simply the last key. ``exclude_key`` skips today's
+    own snapshot when a run is re-executed after already archiving.
+
+    Returns None on any failure. A missing history is the normal state on the
+    first run and must never take the report down.
+    """
+    import boto3
+
+    try:
+        client = boto3.client("s3", region_name=region)
+        newest = None
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix.rstrip("/") + "/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json") or key == exclude_key:
+                    continue
+                if newest is None or key > newest:
+                    newest = key
+        if newest is None:
+            logger.info("No earlier snapshot under s3://%s/%s", bucket, prefix)
+            return None
+        body = client.get_object(Bucket=bucket, Key=newest)["Body"].read()
+        snapshot = json.loads(body)
+        logger.info("Loaded previous snapshot %s", newest)
+        return snapshot
+    except Exception as exc:  # noqa: BLE001 - never fail the report over history
+        logger.warning("Could not load previous snapshot: %s", exc)
+        return None

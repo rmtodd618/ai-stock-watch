@@ -20,6 +20,10 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: Whether the function should send email (vs. dry run in logs).
+  DashboardUrl:
+    Type: String
+    Default: ""
+    Description: Optional link shown at the foot of the email (the record dashboard).
   SaveToS3:
     Type: String
     Default: "true"
@@ -145,6 +149,7 @@ Resources:
           REPORT_BUCKET: !Ref ReportBucket
           EMAIL_ENABLED: !Ref EmailEnabled
           SAVE_TO_S3: !Ref SaveToS3
+          DASHBOARD_URL: !Ref DashboardUrl
           EARNINGS_GUARD_ENABLED: !Ref EarningsGuardEnabled
           MACRO_OVERLAY_ENABLED: !Ref MacroOverlayEnabled
           NEWS_SENTIMENT_ENABLED: !Ref NewsSentimentEnabled
