@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for the OIDC role assumption in deploy
 
 jobs:
   test:
@@ -17,3 +22,69 @@ jobs:
         run: pip install -r requirements-dev.txt PyYAML
       - name: Run tests
         run: pytest
+
+  deploy:
+    # Only from main, only after the tests pass, never from a pull request.
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      # Never let two deploys race for the same CloudFormation stack.
+      group: deploy-ai-stock-watch
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Until the OIDC role exists (infra/github-oidc.yaml) and its ARN is set
+      # as a repo secret, skip deploying rather than failing the build red.
+      - name: Check deploy credentials are configured
+        id: preflight
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "AWS_DEPLOY_ROLE_ARN is not set — skipping deploy." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assume the deploy role
+        if: steps.preflight.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Short-lived credentials via OIDC. No access keys live in GitHub.
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: aws-actions/setup-sam@v2
+        if: steps.preflight.outputs.ready == 'true'
+        with:
+          use-installer: true
+
+      - name: Build the Lambda artifact
+        if: steps.preflight.outputs.ready == 'true'
+        run: ./scripts/build-lambda.sh
+
+      - name: Deploy
+        if: steps.preflight.outputs.ready == 'true'
+        # Parameters come from infra/samconfig.toml, which pins the real stack
+        # name and the live values. Secrets never enter the template.
+        run: |
+          sam deploy \
+            -t infra/template.yaml \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Report what is live
+        if: steps.preflight.outputs.ready == 'true'
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "$(aws cloudformation describe-stacks \
+                --stack-name ai-stock-watch \
+                --query 'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' \
+                --output text)" \
+            --query '{LastModified:LastModified,Sha:CodeSha256}' --output table

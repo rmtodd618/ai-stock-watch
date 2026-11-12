@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Lets GitHub Actions deploy ai-stock-watch without any long-lived AWS keys.
+  Creates the GitHub OIDC provider and a role the workflow assumes for the
+  duration of a single job.
+
+  The security boundary here is the TRUST policy, not the permission policy:
+  only this repository, and only its main branch, can assume the role. A fork,
+  a pull request, or any other branch is refused by STS before a single
+  permission is evaluated.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: rmtodd618
+  GitHubRepo:
+    Type: String
+    Default: ai-stock-watch
+  Branch:
+    Type: String
+    Default: main
+    Description: Only this branch may assume the role.
+  TargetStackName:
+    Type: String
+    Default: ai-stock-watch
+    Description: The application stack this role is allowed to deploy.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # AWS no longer validates these for GitHub, but the property is required.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${TargetStackName}-github-deploy"
+      Description: Assumed by GitHub Actions to deploy the ai-stock-watch stack.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # Exact match, not StringLike: no wildcard that a branch named
+                # "main-something" could slip through.
+                token.actions.githubusercontent.com:sub: !Sub
+                  "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${Branch}"
+      Policies:
+        - PolicyName: deploy-ai-stock-watch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The application stack, and the SAM-managed artifact stack only.
+              - Sid: ManageTheStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListStackResources
+                  - cloudformation:UpdateStack
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${TargetStackName}/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*"
+              - Sid: ValidateTemplates
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:ListStacks
+                Resource: "*"
+              - Sid: UploadBuildArtifacts
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*
+                  - arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*
+              # The resources the template actually manages.
+              - Sid: ManageApplicationResources
+                Effect: Allow
+                Action:
+                  - lambda:*
+                  - events:*
+                  - sns:*
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - s3:CreateBucket
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutLifecycleConfiguration
+                  - s3:GetLifecycleConfiguration
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketTagging
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketAcl
+                  - s3:GetBucketPolicy
+                  - s3:GetBucketNotification
+                Resource: "*"
+              # Creating and passing the function's own execution role.
+              - Sid: ManageTheFunctionRole
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${TargetStackName}-*"
+
+Outputs:
+  DeployRoleArn:
+    Description: Set this as the AWS_DEPLOY_ROLE_ARN secret in the GitHub repo.
+    Value: !GetAtt DeployRole.Arn
