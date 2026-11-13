@@ -29,10 +29,14 @@ echo "Copying application source ..."
 cp -r src build/src
 cp config.example.yaml build/config.example.yaml
 
-echo "Trimming artifact (test suites, pip metadata, caches) ..."
+echo "Trimming artifact (test suites, caches) ..."
 find build -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
 find build -type d -name "tests" -prune -exec rm -rf {} + 2>/dev/null || true
-find build -type d -name "*.dist-info" -prune -exec rm -rf {} + 2>/dev/null || true
 find build -name "*.pyc" -delete 2>/dev/null || true
+# NOT *.dist-info. Packages that read their own version through
+# importlib.metadata need that directory present at import time. Deleting it
+# was harmless until the anthropic SDK pulled in httpx2, whose __init__ calls
+# version("httpx2") — the 2026-11-12 run died on PackageNotFoundError before
+# it could score anything. The metadata is a few MB against a 250MB limit.
 
 echo "Build complete: ./build ($(du -sh build | cut -f1))"
