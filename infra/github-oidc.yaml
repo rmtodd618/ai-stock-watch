@@ -80,11 +80,25 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${TargetStackName}/*"
                   - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*"
+              # A SAM template carries Transform: AWS::Serverless-2016-10-31,
+              # and CloudFormation evaluates CreateChangeSet against the
+              # transform's own ARN as well as the stack's. Scoping the action
+              # to stack ARNs alone fails with "not authorized ... on resource
+              # arn:aws:cloudformation:<region>:aws:transform/Serverless-2016-10-31".
+              - Sid: UseTheServerlessTransform
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31"
               - Sid: ValidateTemplates
                 Effect: Allow
                 Action:
                   - cloudformation:ValidateTemplate
                   - cloudformation:ListStacks
+                  # Called against an uploaded template body rather than a
+                  # stack, so it cannot be scoped to a stack ARN.
+                  - cloudformation:GetTemplateSummary
                 Resource: "*"
               - Sid: UploadBuildArtifacts
                 Effect: Allow
