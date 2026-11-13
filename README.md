@@ -112,7 +112,11 @@ pytest
 ## Configuration
 
 `config.example.yaml` is the committed template. Copy it to `config.yaml` (which is
-git-ignored) for local overrides. **No secrets or personal data live in the config.**
+git-ignored) for local overrides. `infra/samconfig.toml` is git-ignored too, so
+it exists only on the machine that created it — CI therefore passes the stack
+name and region explicitly and supplies no parameter overrides, letting
+CloudFormation keep the live value of every parameter it is not given. That is
+also why the sender and recipient addresses never need to be stored in GitHub. **No secrets or personal data live in the config.**
 Email addresses and the S3 bucket are read from environment variables, named by the
 `*_env_var` keys in the config:
 

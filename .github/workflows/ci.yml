@@ -71,11 +71,21 @@ jobs:
 
       - name: Deploy
         if: steps.preflight.outputs.ready == 'true'
-        # Parameters come from infra/samconfig.toml, which pins the real stack
-        # name and the live values. Secrets never enter the template.
+        # Stack identity is explicit rather than read from samconfig.toml: that
+        # file is gitignored, so it does not exist in a fresh checkout and SAM
+        # has nothing to target.
+        #
+        # Deliberately no --parameter-overrides. CloudFormation keeps the
+        # existing value for every parameter not supplied, so the deploy carries
+        # the live settings without the sender and recipient addresses ever
+        # being stored in GitHub. Changing a parameter stays a local operation.
         run: |
           sam deploy \
             -t infra/template.yaml \
+            --stack-name ai-stock-watch \
+            --region us-east-1 \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
