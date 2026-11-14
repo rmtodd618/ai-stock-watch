@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Serves the live-record dashboard from the existing private report bucket over
+  CloudFront, so the page has a stable URL that refreshes itself instead of
+  depending on someone republishing it by hand.
+
+  The bucket stays private. CloudFront reaches it through an Origin Access
+  Control, and the bucket policy admits only this distribution — nothing becomes
+  publicly readable in S3, and only the dashboard/ prefix is reachable at all.
+
+  A CloudFront Function enforces HTTP basic auth at the edge. The page carries
+  no credentials and no positions, but it does carry a watchlist and a
+  performance record, and an unguessable URL is not an access control.
+
+Parameters:
+  ReportBucketName:
+    Type: String
+    Description: The existing report bucket (ReportBucketName output of the app stack).
+  AuthUser:
+    Type: String
+    Default: watch
+    Description: Username for the dashboard.
+  AuthPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: >
+      Password for the dashboard. Stored in the CloudFront Function's code, so
+      treat it as protecting a read-only page rather than as a secret.
+
+Resources:
+  # Lets CloudFront sign its requests to S3 so the bucket can stay private.
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  BasicAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AWS::StackName}-basic-auth"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rejects unauthenticated requests at the edge.
+        Runtime: cloudfront-js-2.0
+      # Sub's map form, so the credentials can be base64-encoded by
+      # CloudFormation rather than hard-coded in the repository.
+      FunctionCode: !Sub
+        - |
+          function handler(event) {
+            var request = event.request;
+            var headers = request.headers;
+            var expected = "Basic ${Creds}";
+            if (!headers.authorization || headers.authorization.value !== expected) {
+              return {
+                statusCode: 401,
+                statusDescription: "Unauthorized",
+                headers: {
+                  "www-authenticate": { value: 'Basic realm="ai-stock-watch"' },
+                  "cache-control": { value: "no-store" }
+                }
+              };
+            }
+            return request;
+          }
+        - Creds: !Base64
+            Fn::Sub: "${AuthUser}:${AuthPassword}"
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: ai-stock-watch live record
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: reportBucket
+            DomainName: !Sub "${ReportBucketName}.s3.${AWS::Region}.amazonaws.com"
+            # Everything is served from under dashboard/, so the reports and
+            # snapshots in the same bucket are not reachable through this
+            # distribution at all.
+            OriginPath: /dashboard
+            S3OriginConfig: {}
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: reportBucket
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          # CachingOptimized, minus cookies/query strings we do not use.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt BasicAuthFunction.FunctionMetadata.FunctionARN
+
+  # Replaces nothing: the bucket has no policy today, and this grants read to
+  # this distribution only, for the dashboard prefix only.
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReportBucketName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowThisDistributionToReadTheDashboard
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${ReportBucketName}/dashboard/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub
+                  "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+
+Outputs:
+  DashboardUrl:
+    Description: Set this as the DashboardUrl parameter on the app stack.
+    Value: !Sub "https://${Distribution.DomainName}/"
+  DistributionId:
+    Value: !Ref Distribution

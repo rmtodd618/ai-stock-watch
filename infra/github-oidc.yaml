@@ -63,6 +63,34 @@ Resources:
             Version: "2012-10-17"
             Statement:
               # The application stack, and the SAM-managed artifact stack only.
+              # Publishing the dashboard page and clearing its cache. Scoped
+              # to the dashboard prefix: the workflow can replace the page and
+              # read snapshots, not touch the archived reports.
+              - Sid: PublishTheDashboard
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${TargetStackName}-reportbucket-*/dashboard/*"
+              - Sid: ReadTheRecord
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${TargetStackName}-reportbucket-*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${TargetStackName}-reportbucket-*/*"
+              - Sid: RefreshTheEdgeCache
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: "*"
+              - Sid: ReadTheDashboardStack
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${TargetStackName}-dashboard/*"
               - Sid: ManageTheStack
                 Effect: Allow
                 Action:
