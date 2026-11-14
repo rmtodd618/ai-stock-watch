@@ -88,7 +88,11 @@ breakdown so every score is auditable.
 ## Quick start (local)
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+make install          # creates .venv and installs everything
+make test
+
+# or by hand:
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 
 # Copy the example config; edit the watchlist if you like
@@ -244,6 +248,10 @@ first.
 ```bash
 make dashboard        # rebuild from the archive and open it
 ```
+
+First run creates `.venv`, installs the dependencies and resolves the bucket
+from CloudFormation, so there is nothing to configure. Pass `BUCKET=<name>` or
+export `REPORT_BUCKET` to point it elsewhere.
 
 Always current, because it is regenerated every time you run it. Good enough if
 you only ever read it on one machine.
