@@ -261,6 +261,25 @@ At this size it falls inside CloudFront's permanent free tier (1 TB out,
 10M requests, 2M function invocations per month; the daily job uses about 42 of
 the 1,000 free invalidation paths), so the running cost is effectively zero.
 
+### What the dashboard shows
+
+Beyond the record and the ranking history, two panels that exist to argue with
+the strategy rather than for it:
+
+- **What the trading has cost** — frictions measured, not modelled: the gap
+  between the traded curve and the same decisions made for free. Shown next to
+  the excess return so the two can be compared directly, and next to what the
+  excess would have been at zero cost, which separates a selection problem from
+  a trading one.
+- **Your portfolio vs the model** — only if a `holdings.yaml` exists. Drift per
+  name, the dollars to match, and what each sale would realise. Rendered from a
+  trimmed view that never carries cost basis or share counts into the page.
+
+Deliberately absent: price targets, entry zones, conviction meters, countdowns
+and live prices. The measurements say this tool cannot do those things, and a
+page implying otherwise would be lying in the direction people want to be lied
+to in.
+
 ### Measuring whether it works
 
 ```bash

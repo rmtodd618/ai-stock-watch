@@ -195,6 +195,28 @@ footer p{margin:0 0 10px; max-width:88ch}
     as intended — it is the vertical scribble that costs money in trading fees.</p>
 </div>
 
+<div class="panel" id="cost-panel">
+  <h2>What the trading has cost</h2>
+  <p class="sub" id="cost-sub"></p>
+  <div class="tiles" style="margin-top:0" id="cost-tiles"></div>
+  <p class="note" id="cost-note"></p>
+</div>
+
+<div class="panel" id="pf-panel" hidden>
+  <h2>Your portfolio vs the model</h2>
+  <p class="sub" id="pf-sub"></p>
+  <div class="tbl">
+    <table>
+      <thead><tr>
+        <th style="text-align:left;width:auto">Ticker</th><th>You</th><th>Model</th>
+        <th>Drift</th><th>To match</th><th>Realises</th>
+      </tr></thead>
+      <tbody id="pf-body"></tbody>
+    </table>
+  </div>
+  <p class="note" id="pf-note"></p>
+</div>
+
 <div class="panel">
   <h2>Standings today</h2>
   <p class="sub" id="stand-sub"></p>
@@ -455,6 +477,74 @@ mount('chart-ranks', function(W,tip,host){
   });
   return svg;
 });
+
+/* ---------- what the trading cost ---------- */
+(function(){
+  var cost=D.cost_points, excess=D.excess_points;
+  document.getElementById('cost-sub').textContent =
+    'Measured, not modelled: the gap between the traded result and the same decisions '+
+    'made for free, at '+D.cost_bps+' bps per unit of turnover.';
+  // excess is already net of frictions, so showing it twice would be two tiles
+  // saying one thing. The useful third number is the counterfactual: what the
+  // same decisions returned before anything was paid for them.
+  var gross = excess + cost;
+  [['Paid in<br>frictions', pct(-cost,2), 'neg', 'spread on every rebalance'],
+   ['Excess vs the watchlist<br>after frictions', pct(excess,2), sgn(excess), 'the benchmark that matters'],
+   ['Excess if trading<br>were free', pct(gross,2), sgn(gross), 'the same calls, no costs']
+  ].forEach(function(t){
+    var d=document.createElement('div'); d.className='tile';
+    d.innerHTML='<span class="k">'+t[0]+'</span><span class="v '+t[2]+'">'+t[1]+
+                '</span><span class="s">'+t[3]+'</span>';
+    document.getElementById('cost-tiles').appendChild(d);
+  });
+  var note;
+  if(cost <= 0.001){
+    note = 'Too few rebalances so far to have cost anything measurable.';
+  } else if(gross < 0){
+    note = 'Frictions have cost '+cost.toFixed(2)+' points so far, but they are not '+
+           'why this is behind: the same decisions made for free would still have '+
+           'trailed the watchlist by '+Math.abs(gross).toFixed(2)+' points. The '+
+           'selection is the shortfall; the trading is on top of it.';
+  } else {
+    note = 'Frictions have taken '+cost.toFixed(2)+' of the '+gross.toFixed(2)+
+           ' points these calls earned before costs — '+
+           (cost/gross*100).toFixed(0)+'% of the gain spent reaching it.';
+  }
+  document.getElementById('cost-note').textContent = note;
+})();
+
+/* ---------- your portfolio vs the model ---------- */
+(function(){
+  var p = D.plan;
+  if(!p || !p.nav) return;
+  var panel=document.getElementById('pf-panel');
+  panel.hidden=false;
+  document.getElementById('pf-sub').textContent =
+    'Net asset value $'+Math.round(p.nav).toLocaleString('en-US')+
+    ' · drift under '+(p.band*100).toFixed(0)+'% is left alone';
+  var tb=document.getElementById('pf-body');
+  p.rows.forEach(function(r){
+    var tr=document.createElement('tr');
+    if(!r.act) tr.className='dim';
+    var realises='\u2014';
+    if(r.dollars<0 && r.term!=='unknown'){
+      realises='<span class="'+(r.gain>=0?'pos':'neg')+'">$'+
+        (r.gain>=0?'+':'\u2212')+Math.abs(r.gain).toLocaleString('en-US')+
+        ' '+r.term+'</span>';
+    }
+    tr.innerHTML='<td class="tk" style="text-align:left">'+r.t+'</td>'+
+      '<td>'+r.cur.toFixed(1)+'%</td><td>'+r.tgt.toFixed(1)+'%</td>'+
+      '<td class="'+(Math.abs(r.drift)>=p.band*100?'neg':'')+'">'+
+        (r.drift>0?'+':'\u2212')+Math.abs(r.drift).toFixed(1)+'%</td>'+
+      '<td class="'+(r.dollars>0?'pos':'neg')+'">'+(r.dollars>0?'+':'\u2212')+'$'+
+        Math.abs(r.dollars).toLocaleString('en-US')+'</td>'+
+      '<td>'+realises+'</td>';
+    tb.appendChild(tr);
+  });
+  document.getElementById('pf-note').textContent =
+    p.summary + ' — these are the trades that would match the model, priced. '+
+    'Nothing here is a recommendation to make them.';
+})();
 
 /* ---------- standings ---------- */
 document.getElementById('stand-sub').textContent =

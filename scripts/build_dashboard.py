@@ -21,12 +21,16 @@ import logging
 import math
 import pathlib
 import sys
+from typing import Optional
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from src.config import env  # noqa: E402
 from src.data_sources import prices as price_source  # noqa: E402
 from src.evaluate import drop_incomplete, forward_return, portfolio, rank_ic  # noqa: E402
+from src.portfolio import rebalance  # noqa: E402
+from src.portfolio import summary_line as plan_summary  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("dashboard")
@@ -47,6 +51,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out", default="dash.json", help="Where to write the page data.")
     p.add_argument("--benchmark", default="SPY")
     p.add_argument("--cost-bps", type=float, default=20.0)
+    p.add_argument("--holdings", help="holdings.yaml to compare against (optional).")
+    p.add_argument("--holdings-s3-key", default="holdings.yaml",
+                   help="Key to read holdings from if --bucket is used.")
     return p.parse_args()
 
 
@@ -69,6 +76,46 @@ def load(args) -> list[dict]:
                     client.get_object(Bucket=args.bucket, Key=obj["Key"])["Body"].read()
                 ))
     return out
+
+
+def _load_holdings(args) -> Optional[dict]:
+    """Holdings are optional and personal: a local file, or the bucket."""
+    import yaml
+
+    if args.holdings:
+        path = pathlib.Path(args.holdings)
+        if path.exists():
+            return yaml.safe_load(path.read_text(encoding="utf-8")) or None
+        logger.warning("No holdings file at %s", path)
+        return None
+    local = ROOT / "holdings.yaml"
+    if local.exists():
+        return yaml.safe_load(local.read_text(encoding="utf-8")) or None
+    if args.bucket:
+        from src.storage.s3 import load_holdings
+        return load_holdings(args.bucket, args.holdings_s3_key, env("AWS_REGION"))
+    return None
+
+
+def _plan_for_page(plan: dict) -> dict:
+    """Only what the page draws — never cost basis or share counts."""
+    return {
+        "nav": round(plan["nav"], 2),
+        "band": plan["band"],
+        "summary": plan_summary(plan),
+        "largest_drift": round(plan["largest_drift"] * 100, 1),
+        "spread_cost": round(plan["spread_cost"], 2),
+        "realised_short": round(plan["realised_short"], 2),
+        "realised_long": round(plan["realised_long"], 2),
+        "rows": [
+            {"t": r["ticker"], "cur": round(r["current"] * 100, 1),
+             "tgt": round(r["target"] * 100, 1), "drift": round(r["drift"] * 100, 1),
+             "dollars": round(r["dollars"], 0), "act": r["actionable"],
+             "gain": round(r["realised_gain"], 0), "term": r["term"]}
+            for r in sorted(plan["rows"], key=lambda r: -abs(r["drift"]))
+            if abs(r["drift"]) > 0.001
+        ],
+    }
 
 
 def main() -> int:
@@ -103,7 +150,8 @@ def main() -> int:
     # snapshot implies earn the following session's return.
     w: dict[str, float] = {}
     cs = cb = cp = 1.0
-    curve = [{"d": ordered[0], "tool": 1.0, "watch": 1.0, "spy": 1.0}]
+    cg = 1.0   # the same strategy with frictions switched off
+    curve = [{"d": ordered[0], "tool": 1.0, "watch": 1.0, "spy": 1.0, "gross": 1.0}]
     for prev, today in zip(ordered, ordered[1:]):
         rows = [r for r in by[prev]["rows"] if not r.get("is_benchmark")]
         ret = lambda t: forward_return(px.get(t, {}), sessions, prev, 1)  # noqa: E731
@@ -113,11 +161,12 @@ def main() -> int:
         tgt = {t: 1 / len(sel) for t in sel} if sel else {}
         turn = sum(abs(tgt.get(t, 0) - w.get(t, 0)) for t in set(tgt) | set(w))
         cs *= 1 + day - turn * args.cost_bps / 1e4
+        cg *= 1 + day
         cb *= 1 + (sum(uni) / len(uni) if uni else 0.0)
         cp *= 1 + (forward_return(px.get("SPY", {}), sessions, prev, 1) or 0.0)
         w = tgt
-        curve.append({"d": today, "tool": round(cs, 5),
-                      "watch": round(cb, 5), "spy": round(cp, 5)})
+        curve.append({"d": today, "tool": round(cs, 5), "watch": round(cb, 5),
+                      "spy": round(cp, 5), "gross": round(cg, 5)})
 
     ever = sorted({r["ticker"] for s in snaps for r in s["rows"]
                    if r.get("rank") and r["rank"] <= 8})
@@ -139,6 +188,24 @@ def main() -> int:
 
     mom = [(s["generated_at"][:10], s["rules"]["weights"].get("momentum")) for s in snaps]
     switch = next((b[0] for a, b in zip(mom, mom[1:]) if a[1] != b[1]), None)
+
+    # Frictions cost exactly the gap between the traded curve and the same
+    # decisions made for free. Measured, not modelled.
+    cost_points = (cg - cs) * 100.0
+    excess_points = (cs - cb) * 100.0
+
+    plan = None
+    holdings = _load_holdings(args)
+    if holdings:
+        prices_now = {
+            r["ticker"]: r.get("current_price")
+            for r in latest["rows"] if r.get("current_price")
+        }
+        plan = rebalance(
+            holdings,
+            [{"ticker": r["ticker"], "action": r["action"]} for r in latest["rows"]],
+            prices_now, band=0.05, spread_bps=args.cost_bps,
+        )
 
     perf = portfolio(snaps, px, sessions, cost_bps=args.cost_bps)
     n = perf["sessions"]
@@ -162,6 +229,10 @@ def main() -> int:
         "years_to_sig": {"ir05": round((2 / 0.5) ** 2), "ir03": round((2 / 0.3) ** 2)},
         "backfill": BACKFILL,
         "excluded_sessions": dropped,
+        "cost_points": round(cost_points, 2),
+        "excess_points": round(excess_points, 2),
+        "cost_bps": args.cost_bps,
+        "plan": _plan_for_page(plan) if plan else None,
     }
     # the page expects ic entries keyed ic/t/n
     out["ic"] = [{"h": e["h"], "ic": e.get("mean_ic"), "t": e.get("t_stat"),
