@@ -271,6 +271,14 @@ the strategy rather than for it:
   the excess return so the two can be compared directly, and next to what the
   excess would have been at zero cost, which separates a selection problem from
   a trading one.
+- **Per-name detail** — click any row. A native `<dialog>` with its score
+  history, the raw score plotted against the smoothed one, best rank, and how
+  many sessions it was actually held. The gap between the two score lines is the
+  point: a name can hold its rank on a 40-session average long after its current
+  reading has collapsed, and the row shows `raw NN` whenever the two diverge by
+  10 points or more.
+- **Sparklines and flags** — 60 sessions of price shape on every row, and the
+  earnings-proximity tags that were already in the archive but never surfaced.
 - **Your portfolio vs the model** — only if a `holdings.yaml` exists. Drift per
   name, the dollars to match, and what each sale would realise. Rendered from a
   trimmed view that never carries cost basis or share counts into the page.

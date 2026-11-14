@@ -176,9 +176,32 @@ def main() -> int:
         for t in ever:
             ranks[t].append(m.get(t, {}).get("rank"))
 
+    # Per-name history, for the detail panel and the row sparklines.
+    all_names = sorted({r["ticker"] for s in snaps for r in s["rows"] if r.get("ticker")})
+    detail: dict[str, dict] = {}
+    for t in all_names:
+        scores, bases, latests, rank_hist = [], [], [], []
+        for s in snaps:
+            row = next((r for r in s["rows"] if r["ticker"] == t), None)
+            scores.append(round(row["score"], 1) if row else None)
+            bases.append(round(row.get("base_score"), 1) if row and row.get("base_score") is not None else None)
+            latests.append(round(row.get("latest_score"), 1) if row and row.get("latest_score") is not None else None)
+            rank_hist.append(row.get("rank") if row else None)
+        series = px.get(t, {})
+        tail = [d for d in sessions if d <= dates[-1]][-60:]
+        spark = [round(series[d], 4) for d in tail if d in series]
+        held = sum(1 for s in snaps
+                   if any(r["ticker"] == t and r.get("action") == "ADD SIGNAL" for r in s["rows"]))
+        detail[t] = {
+            "scores": scores, "base": bases, "latest": latests, "ranks": rank_hist,
+            "spark": spark, "held_sessions": held, "sessions": len(snaps),
+        }
+
     latest = snaps[-1]
     standings = [{
         "t": r["ticker"], "rank": r.get("rank"), "score": r["score"],
+        "base": r.get("base_score"), "raw": r.get("latest_score"),
+        "tags": r.get("tags") or [],
         "action": r["action"], "px": r.get("current_price"),
         "c5": r.get("change_5d"), "c30": r.get("change_30d"),
         "below": r.get("pct_below_52w_high"),
@@ -232,6 +255,8 @@ def main() -> int:
         "cost_points": round(cost_points, 2),
         "excess_points": round(excess_points, 2),
         "cost_bps": args.cost_bps,
+        "detail": detail,
+        "dates": dates,
         "plan": _plan_for_page(plan) if plan else None,
     }
     # the page expects ic entries keyed ic/t/n

@@ -142,6 +142,42 @@ td.tk{font-family:var(--ui); font-weight:600; font-size:13px}
 .c-av{background:var(--sunk); color:var(--ink-3); border:1px solid var(--rule)}
 .c-bm{background:transparent; color:var(--ink-3); border:1px dashed var(--rule-2)}
 
+/* row sparkline + detail */
+.spark{display:block}
+.spark path{fill:none;stroke:var(--ink-3);stroke-width:1.5;stroke-linejoin:round}
+tr.held .spark path{stroke:var(--s1)}
+.gap{font-size:9.5px;color:var(--ink-3);margin-left:5px}
+.gap.warn{color:var(--s2);font-weight:700}
+.flag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.05em;
+      padding:1px 5px;border-radius:3px;background:color-mix(in srgb,var(--warn) 22%,transparent);
+      color:#8a6d1f;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent)}
+tbody tr[data-t]{cursor:pointer}
+tbody tr[data-t]:hover td{background:color-mix(in srgb,var(--s1) 9%,transparent)}
+
+dialog{border:1px solid var(--rule-2);border-radius:6px;background:var(--surface);
+       color:var(--ink);padding:0;max-width:640px;width:calc(100% - 32px);
+       box-shadow:0 24px 60px -24px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(8,11,15,.55);backdrop-filter:blur(2px)}
+.dlg-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+          padding:16px 18px 12px;border-bottom:1px solid var(--rule)}
+.dlg-head h3{margin:0;font-size:19px;letter-spacing:-.02em}
+.dlg-head .sub{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.dlg-body{padding:14px 18px 18px}
+.dlg-close{background:none;border:0;color:var(--ink-3);font-size:20px;cursor:pointer;
+           line-height:1;padding:2px 6px;border-radius:4px}
+.dlg-close:hover{background:var(--sunk);color:var(--ink)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;
+    background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden;
+    margin-bottom:14px}
+.kv div{background:var(--surface);padding:9px 11px}
+.kv .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+       color:var(--ink-3);display:block;margin-bottom:5px}
+.kv .v{font-family:var(--mono);font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:no-preference){
+  dialog[open]{animation:pop .16s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(6px) scale(.99)}}
+}
+
 footer{margin-top:40px; border-top:1px solid var(--rule); padding-top:18px;
        font-size:13px; color:var(--ink-3); line-height:1.6}
 footer p{margin:0 0 10px; max-width:88ch}
@@ -223,8 +259,8 @@ footer p{margin:0 0 10px; max-width:88ch}
   <div class="tbl">
     <table>
       <thead><tr>
-        <th>#</th><th>Ticker</th><th>Score</th><th>Action</th>
-        <th>Price</th><th>5D</th><th>30D</th><th>% &lt; 52w high</th>
+        <th>#</th><th>Ticker</th><th>Score</th><th>60 sessions</th><th>Action</th>
+        <th>Price</th><th>30D</th><th>% &lt; 52w high</th><th>Flags</th>
       </tr></thead>
       <tbody id="stand-body"></tbody>
     </table>
@@ -251,6 +287,22 @@ footer p{margin:0 0 10px; max-width:88ch}
     <p class="note" id="years-note"></p>
   </div>
 </div>
+
+<dialog id="detail">
+  <div class="dlg-head">
+    <div><h3 id="d-t"></h3><div class="sub" id="d-sub"></div></div>
+    <button class="dlg-close" id="d-x" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <div class="kv" id="d-kv"></div>
+    <div class="legend">
+      <span><i class="sw w1"></i>Smoothed score (what ranks it)</span>
+      <span><i class="sw wm"></i>Raw score today</span>
+    </div>
+    <div class="chart" id="d-chart"></div>
+    <p class="note" id="d-note"></p>
+  </div>
+</dialog>
 
 <footer>
   <p><strong>What this is.</strong> Every weekday at 22:00 UTC the tool scores the
@@ -551,22 +603,137 @@ document.getElementById('stand-sub').textContent =
   'As published '+D.asof+'. Benchmarks and names without enough history are shown but never ranked.';
 var CHIP={'ADD SIGNAL':'c-add','STARTER SIGNAL':'c-st','WATCH':'c-wa',
           'AVOID FOR NOW':'c-av','BENCHMARK':'c-bm','NOT ENOUGH HISTORY':'c-bm'};
+
+/* A 60-session price sparkline, small enough to read as texture. */
+function sparkSvg(vals, w, h){
+  var svg=el('svg',{class:'spark',viewBox:'0 0 '+w+' '+h,width:w,height:h});
+  if(!vals || vals.length<2) return svg;
+  var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals), rng=(hi-lo)||1;
+  var d='';
+  vals.forEach(function(v,i){
+    d+=(i?'L':'M')+(i/(vals.length-1)*(w-2)+1).toFixed(1)+' '+
+       (h-1-((v-lo)/rng)*(h-2)).toFixed(1);
+  });
+  svg.appendChild(el('path',{d:d}));
+  return svg;
+}
+
 var tb=document.getElementById('stand-body');
 D.standings.forEach(function(r){
   var tr=document.createElement('tr');
   if(r.rank&&r.rank<=8) tr.className='held';
   else if(r.bench||r.short) tr.className='dim';
   var f=function(v,d){return v==null?'—':pct(v,d==null?1:d)};
+
+  /* The smoothed score is what ranks a name; the raw score is what it looks
+     like today. A wide gap means the rank is carried by the average rather
+     than by anything currently true, which belongs on the row. */
+  var gap='';
+  if(r.score!=null && r.raw!=null){
+    var g=r.raw-r.score;
+    if(Math.abs(g)>=10) gap='<span class="gap'+(Math.abs(g)>=20?' warn':'')+'">raw '+
+      r.raw.toFixed(0)+'</span>';
+  }
+  var flags=(r.tags||[]).map(function(t){return '<span class="flag">'+t+'</span>';}).join(' ');
+
   tr.innerHTML='<td>'+(r.rank==null?'—':r.rank)+'</td>'+
     '<td class="tk">'+r.t+'</td>'+
-    '<td>'+(r.score==null?'—':r.score.toFixed(1))+'</td>'+
+    '<td>'+(r.score==null?'—':r.score.toFixed(1))+gap+'</td>'+
+    '<td class="spk"></td>'+
     '<td><span class="chip '+(CHIP[r.action]||'c-av')+'">'+r.action+'</span></td>'+
     '<td>'+(r.px==null?'—':'$'+r.px.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))+'</td>'+
-    '<td class="'+sgn(r.c5)+'">'+f(r.c5)+'</td>'+
     '<td class="'+sgn(r.c30)+'">'+f(r.c30)+'</td>'+
-    '<td>'+f(r.below)+'</td>';
+    '<td>'+f(r.below)+'</td>'+
+    '<td>'+(flags||'')+'</td>';
+  var det=(D.detail||{})[r.t];
+  if(det){
+    tr.querySelector('.spk').appendChild(sparkSvg(det.spark,64,18));
+    tr.setAttribute('data-t', r.t);
+    tr.tabIndex=0;
+  }
   tb.appendChild(tr);
 });
+
+/* ---------- per-name detail ---------- */
+(function(){
+  var dlg=document.getElementById('detail');
+  if(!dlg || !dlg.showModal) return;
+
+  function scoreChart(det,W){
+    var H=170, m={t:10,r:12,b:22,l:30}, iw=W-m.l-m.r, ih=H-m.t-m.b;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H});
+    var all=det.scores.concat(det.latest).filter(function(v){return v!=null});
+    if(!all.length) return svg;
+    var lo=Math.max(0,Math.min.apply(null,all)-6), hi=Math.min(100,Math.max.apply(null,all)+6);
+    var Y=function(v){return m.t+ih-(v-lo)/((hi-lo)||1)*ih};
+    var X=function(i){return m.l+i/Math.max(1,det.scores.length-1)*iw};
+    [lo,(lo+hi)/2,hi].forEach(function(v){
+      var y=Y(v);
+      svg.appendChild(el('line',{class:'grid',x1:m.l,x2:m.l+iw,y1:y,y2:y}));
+      svg.appendChild(tx(el('text',{class:'tick',x:m.l-6,y:y+3.5,'text-anchor':'end'}),v.toFixed(0)));
+    });
+    [['latest','cmute',1.5],['scores','c1',2]].forEach(function(cfg){
+      var d='', open_=false;
+      det[cfg[0]].forEach(function(v,i){
+        if(v==null){open_=false;return}
+        d+=(open_?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1); open_=true;
+      });
+      if(d) svg.appendChild(el('path',{class:'ln '+cfg[1],d:d,'stroke-width':cfg[2]}));
+    });
+    svg.appendChild(tx(el('text',{class:'tick',x:m.l,y:H-7}),D.dates[0]));
+    svg.appendChild(tx(el('text',{class:'tick',x:m.l+iw,y:H-7,'text-anchor':'end'}),D.asof));
+    return svg;
+  }
+
+  function open(ticker){
+    var det=(D.detail||{})[ticker];
+    var row=D.standings.filter(function(s){return s.t===ticker})[0];
+    if(!det||!row) return;
+    document.getElementById('d-t').textContent=ticker;
+    document.getElementById('d-sub').textContent =
+      row.action + (row.rank? ' · rank '+row.rank : '') +
+      ' · held '+det.held_sessions+' of '+det.sessions+' sessions';
+
+    var best=det.ranks.filter(function(x){return x!=null});
+    var kv=[['Smoothed', row.score==null?'—':row.score.toFixed(1)],
+            ['Raw today', row.raw==null?'—':row.raw.toFixed(1)],
+            ['Best rank', best.length?Math.min.apply(null,best):'—'],
+            ['30 days', row.c30==null?'—':pct(row.c30,1)]];
+    document.getElementById('d-kv').innerHTML = kv.map(function(p){
+      return '<div><span class="k">'+p[0]+'</span><span class="v">'+p[1]+'</span></div>';
+    }).join('');
+
+    var g=(row.raw!=null&&row.score!=null)?row.raw-row.score:null;
+    document.getElementById('d-note').textContent = g==null ? '' :
+      (Math.abs(g)<10
+        ? 'The smoothed and raw scores agree, so its position reflects what is true now.'
+        : (g<0
+           ? 'The raw score is '+Math.abs(g).toFixed(0)+' points below the smoothed one: the '+
+             'ranking is carried by the 40-session average, not by anything currently true '+
+             'of this chart.'
+           : 'The raw score is '+g.toFixed(0)+' points above the smoothed one: it is '+
+             'improving faster than the average has caught up with.'));
+
+    var host=document.getElementById('d-chart');
+    host.innerHTML='';
+    host.appendChild(scoreChart(det, host.clientWidth||560));
+    if(document.startViewTransition &&
+       !matchMedia('(prefers-reduced-motion: reduce)').matches){
+      document.startViewTransition(function(){ dlg.showModal(); });
+    } else { dlg.showModal(); }
+  }
+
+  tb.addEventListener('click',function(e){
+    var tr=e.target.closest('tr[data-t]'); if(tr) open(tr.getAttribute('data-t'));
+  });
+  tb.addEventListener('keydown',function(e){
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    var tr=e.target.closest('tr[data-t]');
+    if(tr){ e.preventDefault(); open(tr.getAttribute('data-t')); }
+  });
+  document.getElementById('d-x').addEventListener('click',function(){dlg.close()});
+  dlg.addEventListener('click',function(e){ if(e.target===dlg) dlg.close(); });
+})();
 
 /* ---------- IC panel ---------- */
 var ib=document.getElementById('ic-body');
