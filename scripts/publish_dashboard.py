@@ -44,6 +44,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--prefix", default="snapshots", help="Where the snapshots live.")
     p.add_argument("--out-file", help="Also write the rendered page here.")
     p.add_argument("--dry-run", action="store_true", help="Build but do not upload.")
+    p.add_argument("--open", dest="open_it", action="store_true",
+                   help="Open the rendered page in a browser. Implies --dry-run.")
     p.add_argument("--invalidate", action="store_true",
                    help="Invalidate the CloudFront cache for / after uploading.")
     p.add_argument("--distribution-id", help="Needed with --invalidate.")
@@ -52,6 +54,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    # Viewing it locally needs no hosting at all: rebuild, write, open. The page
+    # is always current because it is rebuilt from the archive each time.
+    if args.open_it:
+        args.dry_run = True
+        args.out_file = args.out_file or str(ROOT / "dashboard.html")
     bucket = args.bucket or env("REPORT_BUCKET")
     if not bucket and not args.dry_run:
         logger.error("No bucket: pass --bucket or set REPORT_BUCKET.")
@@ -84,8 +91,13 @@ def main() -> int:
         pathlib.Path(args.out_file).write_text(page, encoding="utf-8")
         logger.info("Wrote %s", args.out_file)
 
+    if args.open_it and args.out_file:
+        import webbrowser
+
+        webbrowser.open(pathlib.Path(args.out_file).resolve().as_uri())
+        logger.info("Opened %s", args.out_file)
+
     if args.dry_run:
-        logger.info("Dry run — nothing uploaded.")
         return 0
 
     import boto3

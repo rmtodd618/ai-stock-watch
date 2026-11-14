@@ -235,10 +235,31 @@ archived snapshots:
 python scripts/build_dashboard.py --bucket my-report-bucket --out dash.json
 ```
 
-The page itself is static — it carries its data inline, so it shows whatever was
-true when it was last built, and the header states the window it covers. The
-weekly Evaluate workflow rebuilds `dash.json` and keeps it as a build artifact;
-republishing the page is a separate manual step.
+The page carries its data inline, so it is only as current as its last build —
+which is why there are two ways to keep it fresh, and why the free one is listed
+first.
+
+**Locally, no hosting, no cost:**
+
+```bash
+make dashboard        # rebuild from the archive and open it
+```
+
+Always current, because it is regenerated every time you run it. Good enough if
+you only ever read it on one machine.
+
+**Served, for a stable URL you can open anywhere:**
+
+`infra/dashboard.yaml` puts CloudFront in front of the existing private bucket,
+and the Evaluate workflow republishes after each weekday close. The bucket stays
+private — CloudFront reads the `dashboard/` prefix through an Origin Access
+Control — and a CloudFront Function enforces basic auth at the edge, because the
+page carries a watchlist and a performance record and an unguessable URL is not
+an access control.
+
+At this size it falls inside CloudFront's permanent free tier (1 TB out,
+10M requests, 2M function invocations per month; the daily job uses about 42 of
+the 1,000 free invalidation paths), so the running cost is effectively zero.
 
 ### Measuring whether it works
 

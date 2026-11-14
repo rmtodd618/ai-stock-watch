@@ -35,3 +35,4 @@ samconfig.toml
 .DS_Store
 .idea/
 .vscode/
+dashboard.html
