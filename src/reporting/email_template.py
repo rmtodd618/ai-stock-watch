@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from src.portfolio import summary_line as plan_summary
 from src.reporting.changes import compute_changes, summary_line
 
 _ACTION_COLORS = {
@@ -95,6 +96,7 @@ def render_text(
     previous: Optional[dict] = None,
     dashboard_url: Optional[str] = None,
     coverage: Optional[dict] = None,
+    plan: Optional[dict] = None,
 ) -> str:
     changes = compute_changes(results, previous)
     lines = [title, generated_at, "", summary_line(results, changes), ""]
@@ -134,6 +136,22 @@ def render_text(
             f"{_fmt_pct(m.get('pct_below_52w_high')):>10}"
             f"{('  ' + note) if note else ''}"
         )
+    if plan and plan.get("nav"):
+        lines += ["", "YOUR PORTFOLIO vs THE MODEL", plan_summary(plan)]
+        act = plan.get("actionable") or []
+        if act:
+            lines.append(
+                f"{'TICKER':<8}{'YOU':>8}{'MODEL':>8}{'DRIFT':>8}{'TO MATCH':>14}{'REALISES':>14}"
+            )
+            for r in sorted(act, key=lambda r: -abs(r["drift"])):
+                realised = ""
+                if r["dollars"] < 0 and r["term"] != "unknown":
+                    realised = f"{r['realised_gain']:+,.0f} {r['term']}"
+                lines.append(
+                    f"{r['ticker']:<8}{r['current']*100:>7.1f}%{r['target']*100:>7.1f}%"
+                    f"{r['drift']*100:>+7.1f}%{r['dollars']:>+13,.0f}{realised:>14}"
+                )
+
     if dashboard_url:
         lines += ["", f"Full record: {dashboard_url}"]
     lines += ["", disclaimer.strip()]
@@ -148,6 +166,7 @@ def render_html(
     previous: Optional[dict] = None,
     dashboard_url: Optional[str] = None,
     coverage: Optional[dict] = None,
+    plan: Optional[dict] = None,
 ) -> str:
     changes = compute_changes(results, previous)
     summary = summary_line(results, changes)
@@ -204,6 +223,45 @@ def render_html(
           <td class="num">{_fmt_pct(m.get('pct_below_52w_high'))}</td>
           <td class="bd">{_notes(r)}</td>
         </tr>"""
+        )
+
+    pf = ""
+    if plan and plan.get("nav"):
+        act = sorted(plan.get("actionable") or [], key=lambda r: -abs(r["drift"]))
+        if act:
+            trs = ""
+            for r in act:
+                realised = "&mdash;"
+                if r["dollars"] < 0 and r["term"] != "unknown":
+                    col = "#1b7f3b" if r["realised_gain"] >= 0 else "#9a3b3b"
+                    realised = (f'<span style="color:{col}">${r["realised_gain"]:+,.0f} '
+                                f'{r["term"]}-term</span>')
+                side = "#1b7f3b" if r["dollars"] > 0 else "#9a3b3b"
+                trs += (
+                    f'<tr><td class="tk">{r["ticker"]}</td>'
+                    f'<td class="num">{r["current"]*100:.1f}%</td>'
+                    f'<td class="num">{r["target"]*100:.1f}%</td>'
+                    f'<td class="num">{r["drift"]*100:+.1f}%</td>'
+                    f'<td class="num" style="color:{side};font-weight:700">'
+                    f'${r["dollars"]:+,.0f}</td>'
+                    f'<td class="num">{realised}</td></tr>'
+                )
+            body = (
+                '<table style="margin-top:8px"><thead><tr>'
+                '<th>Ticker</th><th class="num">You</th><th class="num">Model</th>'
+                '<th class="num">Drift</th><th class="num">To match</th>'
+                '<th class="num">Realises</th></tr></thead><tbody>'
+                + trs + "</tbody></table>"
+            )
+        else:
+            body = ""
+        pf = (
+            '<div style="padding:14px 24px;border-top:1px solid #eef1f5;'
+            'background:#fbfcfd">'
+            '<div style="font-weight:700;font-size:13px;margin-bottom:4px">'
+            'Your portfolio vs the model</div>'
+            f'<div style="font-size:12px;color:#6b7585">{plan_summary(plan)}</div>'
+            f"{body}</div>"
         )
 
     link = (
@@ -271,6 +329,7 @@ def render_html(
       <tbody>{''.join(rows)}
       </tbody>
     </table>
+    {pf}
     <div class="foot">
       {link}
       {disclaimer.strip()}

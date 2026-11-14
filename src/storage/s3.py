@@ -167,3 +167,27 @@ def load_previous_snapshot(
     except Exception as exc:  # noqa: BLE001 - never fail the report over history
         logger.warning("Could not load previous snapshot: %s", exc)
         return None
+
+
+def load_holdings(
+    bucket: Optional[str] = None,
+    key: str = "holdings.yaml",
+    region: Optional[str] = None,
+) -> Optional[dict]:
+    """Read the holdings file from S3. None if absent or unreadable.
+
+    Position data is optional by design: without it the report still works and
+    simply says it has nothing to compare against.
+    """
+    if not bucket:
+        return None
+    import boto3
+    import yaml
+
+    try:
+        client = boto3.client("s3", region_name=region)
+        body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+        return yaml.safe_load(body) or None
+    except Exception as exc:  # noqa: BLE001 - holdings are never load-bearing
+        logger.info("No holdings at s3://%s/%s (%s)", bucket, key, type(exc).__name__)
+        return None

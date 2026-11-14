@@ -11,11 +11,14 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
 
 from src.config import env, load_config, resolve_recipients
 from src.data_sources import earnings, macro, news, prices
 from src.llm import claude
 from src.reporting import email_template, ses
+from src import portfolio as portfolio_mod
 from src.scoring import regimes, selection
 from src.scoring.composite import composite_score
 from src.scoring.earnings_guard import apply_earnings_guard
@@ -120,6 +123,23 @@ def build_results(
         row["action"] = action.label
 
     return results
+
+
+def _load_holdings(pf_cfg: dict, bucket: Optional[str], region: Optional[str]) -> Optional[dict]:
+    """Local file first so a developer can try it without touching S3."""
+    import yaml
+
+    local = pf_cfg.get("holdings_file")
+    if local:
+        path = Path(local)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parent.parent / local
+        if path.exists():
+            try:
+                return yaml.safe_load(path.read_text(encoding="utf-8")) or None
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not read %s: %s", path, exc)
+    return s3.load_holdings(bucket, pf_cfg.get("holdings_s3_key", "holdings.yaml"), region)
 
 
 def _resolve_anthropic_key(news_cfg: dict, region: str | None) -> str | None:
@@ -241,11 +261,32 @@ def run(config: dict, send: bool | None = None) -> dict:
         "degraded": degraded,
     }
 
+    # Optional: what the model holds versus what you hold, and what closing the
+    # gap would cost. Never load-bearing — a missing holdings file just means
+    # the report has nothing to compare against.
+    plan = None
+    pf_cfg = config.get("portfolio", {}) or {}
+    if pf_cfg.get("enabled"):
+        holdings = _load_holdings(pf_cfg, bucket, region)
+        if holdings:
+            prices_now = {
+                r["ticker"]: r["metrics"].get("current_price")
+                for r in results
+                if r.get("metrics", {}).get("current_price")
+            }
+            plan = portfolio_mod.rebalance(
+                holdings, results, prices_now,
+                band=float(pf_cfg.get("rebalance_band", 0.05)),
+                spread_bps=float(pf_cfg.get("spread_bps", 20)),
+            )
+
     html = email_template.render_html(
-        results, title, generated_at, disclaimer, previous, dashboard_url, coverage
+        results, title, generated_at, disclaimer, previous, dashboard_url,
+        coverage, plan
     )
     text = email_template.render_text(
-        results, title, generated_at, disclaimer, previous, dashboard_url, coverage
+        results, title, generated_at, disclaimer, previous, dashboard_url,
+        coverage, plan
     )
 
     should_send = report_cfg.get("email_enabled", False) if send is None else send

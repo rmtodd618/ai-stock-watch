@@ -197,6 +197,35 @@ overlay on a regime read at the time. The script refuses to run while any of the
 is enabled rather than emit rows that quietly differ in meaning from live ones.
 Those only accumulate going forward.
 
+### Your portfolio vs the model
+
+Optional. Copy `holdings.example.yaml` to `holdings.yaml` (git-ignored), or
+upload the same file to the report bucket as `holdings.yaml` for the scheduled
+run. Without it the report behaves exactly as before and says it has nothing to
+compare against.
+
+With it, the report adds what it would take to match the model — and what that
+would cost:
+
+```
+TICKER     YOU   MODEL   DRIFT    TO MATCH           REALISES
+NVDA     21.5%    0.0%  +21.5%      -6,648   $-1,012 short-term
+PLTR     33.3%   14.3%  +19.0%      -5,877   $+1,835 short-term
+ANET      0.0%   14.3%  -14.3%      +4,418
+```
+
+Two deliberate choices. Every suggested trade is priced, in spread and in
+realised gain or loss, because the measurements say the trading rather than the
+ranking is what costs money — a move that cannot clear its own cost is not a
+move. And `rebalance_band` (default 5%) means drift smaller than the band is
+left alone rather than reported as something to fix, since a portfolio nudged
+back to target daily is the exact behaviour the backtest punished.
+
+The report describes trades; it never recommends them. `cost_basis` and
+`acquired` are optional, but without them it cannot tell you whether a sale
+realises a short- or long-term result, which is usually the number most likely
+to change your mind.
+
 ### The dashboard
 
 `scripts/build_dashboard.py` regenerates the live-record page's data from the
@@ -314,6 +343,7 @@ ai-stock-watch/
     storage/
       s3.py               # archive report to S3 (optional)
   backfill.py           # pure: price history -> reconstructed past snapshots
+  portfolio.py          # pure: holdings + model -> drift, trades, costs
   evaluate.py           # pure: snapshots + prices -> IC, tier returns, portfolio
   scripts/
     build-lambda.sh       # Docker-free Lambda artifact

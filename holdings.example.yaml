@@ -1,0 +1,17 @@
+# Your actual positions. Copy to holdings.yaml (git-ignored) and edit, or put
+# the same file in S3 at holdings.yaml so the scheduled run can read it.
+#
+# Nothing here is required. Without it the report behaves exactly as before and
+# simply says it has no holdings to compare against.
+#
+# cost_basis and acquired are optional, but without them the report cannot tell
+# you what a sale would realise or whether the gain is short or long term — and
+# that is the number most likely to change your mind about a trade.
+
+cash: 0.00
+
+positions:
+  # TEM:
+  #   shares: 120
+  #   cost_basis: 68.40      # per share
+  #   acquired: 2026-09-15   # YYYY-MM-DD
