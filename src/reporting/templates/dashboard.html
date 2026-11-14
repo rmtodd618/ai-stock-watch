@@ -127,6 +127,23 @@ th{text-align:right; font-weight:500; font-size:9.5px; letter-spacing:.09em;
    border-bottom:1px solid var(--rule-2); white-space:nowrap}
 th:nth-child(2),td:nth-child(2){text-align:left}
 th:first-child,td:first-child{text-align:right; width:34px}
+
+/* Header and cell must share an alignment or every column reads as offset.
+   Declared per table and per column rather than by tagging each cell, which
+   is what drifted out of sync when the columns changed. */
+table.standings th:nth-child(1), table.standings td:nth-child(1),
+table.standings th:nth-child(3), table.standings td:nth-child(3),
+table.standings th:nth-child(6), table.standings td:nth-child(6),
+table.standings th:nth-child(7), table.standings td:nth-child(7),
+table.standings th:nth-child(8), table.standings td:nth-child(8){text-align:right}
+table.standings th:nth-child(2), table.standings td:nth-child(2),
+table.standings th:nth-child(4), table.standings td:nth-child(4),
+table.standings th:nth-child(5), table.standings td:nth-child(5),
+table.standings th:nth-child(9), table.standings td:nth-child(9){text-align:left}
+table.standings td:nth-child(4){width:70px}
+
+table.pf th:nth-child(1), table.pf td:nth-child(1){text-align:left}
+table.pf th:nth-child(n+2), table.pf td:nth-child(n+2){text-align:right}
 td{padding:7px 10px; border-bottom:1px solid var(--rule); white-space:nowrap}
 tbody tr:last-child td{border-bottom:none}
 tr.held td{background:color-mix(in srgb,var(--s1) 6%,transparent)}
@@ -141,6 +158,20 @@ td.tk{font-family:var(--ui); font-weight:600; font-size:13px}
 .c-wa{background:var(--sunk); color:var(--ink-2); border:1px solid var(--rule-2)}
 .c-av{background:var(--sunk); color:var(--ink-3); border:1px solid var(--rule)}
 .c-bm{background:transparent; color:var(--ink-3); border:1px dashed var(--rule-2)}
+
+/* the flagged set, as cards rather than rows buried in a table */
+.port{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:1px;
+      background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.port .c{background:var(--surface);padding:11px 12px 10px;cursor:pointer}
+.port .c:hover{background:color-mix(in srgb,var(--s1) 9%,transparent)}
+.port .n{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.port .tkr{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.port .rk{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.port .w{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:6px;
+         font-variant-numeric:tabular-nums}
+.port .m{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.port .c.new{box-shadow:inset 3px 0 0 var(--good)}
+.port .c.stale{box-shadow:inset 3px 0 0 var(--s2)}
 
 /* row sparkline + detail */
 .spark{display:block}
@@ -200,6 +231,13 @@ footer p{margin:0 0 10px; max-width:88ch}
 
 <div class="tiles" id="tiles"></div>
 
+<div class="panel" id="port-panel" style="margin-top:22px">
+  <h2>The model portfolio today</h2>
+  <p class="sub" id="port-sub"></p>
+  <div class="port" id="port-grid"></div>
+  <p class="note" id="port-note"></p>
+</div>
+
 <div class="banner">
   <p class="t" id="verdict-t"></p>
   <p id="verdict-1"></p>
@@ -242,9 +280,9 @@ footer p{margin:0 0 10px; max-width:88ch}
   <h2>Your portfolio vs the model</h2>
   <p class="sub" id="pf-sub"></p>
   <div class="tbl">
-    <table>
+    <table class="pf">
       <thead><tr>
-        <th style="text-align:left;width:auto">Ticker</th><th>You</th><th>Model</th>
+        <th style="width:auto">Ticker</th><th>You</th><th>Model</th>
         <th>Drift</th><th>To match</th><th>Realises</th>
       </tr></thead>
       <tbody id="pf-body"></tbody>
@@ -257,7 +295,7 @@ footer p{margin:0 0 10px; max-width:88ch}
   <h2>Standings today</h2>
   <p class="sub" id="stand-sub"></p>
   <div class="tbl">
-    <table>
+    <table class="standings">
       <thead><tr>
         <th>#</th><th>Ticker</th><th>Score</th><th>60 sessions</th><th>Action</th>
         <th>Price</th><th>30D</th><th>% &lt; 52w high</th><th>Flags</th>
@@ -359,6 +397,39 @@ document.getElementById('verdict-2').textContent =
   'The record also spans a rule change: '+D.regime_counts.old+' sessions ran the original weights, '+
   D.regime_counts.new+' have run with momentum removed since '+D.switch+'. Each snapshot stores the rules that '+
   'produced it, so the two populations stay separable.';
+
+/* ---------- the flagged set ---------- */
+(function(){
+  var held=D.standings.filter(function(r){return r.action==='ADD SIGNAL'});
+  var w = held.length ? 100/held.length : 0;
+  document.getElementById('port-sub').textContent =
+    held.length
+      ? held.length+' names, equal weight at '+w.toFixed(1)+'% each \u00b7 as published '+D.asof
+      : 'Nothing is flagged today.';
+  var grid=document.getElementById('port-grid');
+  held.sort(function(a,b){return a.rank-b.rank}).forEach(function(r){
+    var gap=(r.raw!=null&&r.score!=null)?r.raw-r.score:0;
+    var c=document.createElement('div');
+    c.className='c'+(gap<=-20?' stale':'');
+    if(r.t) c.setAttribute('data-t',r.t);
+    c.innerHTML='<div class="n"><span class="tkr">'+r.t+'</span>'+
+                '<span class="rk">#'+r.rank+'</span></div>'+
+                '<div class="w">'+w.toFixed(1)+'%</div>'+
+                '<div class="m">score '+r.score.toFixed(0)+
+                (gap<=-10?' \u00b7 raw '+r.raw.toFixed(0):'')+'</div>';
+    grid.appendChild(c);
+  });
+  var stale=held.filter(function(r){return r.raw!=null&&r.score!=null&&(r.raw-r.score)<=-20});
+  document.getElementById('port-note').textContent =
+    'This is the whole output: the ' + held.length + ' best-ranked names, held in equal '+
+    'weight. There is no conviction level and no price target — the score orders names '+
+    'against each other and says nothing about what any of them is worth.' +
+    (stale.length
+      ? ' ' + stale.map(function(r){return r.t}).join(', ') +
+        (stale.length>1?' are':' is') + ' marked because the raw score has fallen far '+
+        'below the average still holding '+(stale.length>1?'them':'it')+' in place.'
+      : '');
+})();
 
 /* ---------- generic mount ---------- */
 function mount(id, draw){
@@ -725,6 +796,10 @@ D.standings.forEach(function(r){
 
   tb.addEventListener('click',function(e){
     var tr=e.target.closest('tr[data-t]'); if(tr) open(tr.getAttribute('data-t'));
+  });
+  var grid=document.getElementById('port-grid');
+  if(grid) grid.addEventListener('click',function(e){
+    var c=e.target.closest('[data-t]'); if(c) open(c.getAttribute('data-t'));
   });
   tb.addEventListener('keydown',function(e){
     if(e.key!=='Enter'&&e.key!==' ')return;
