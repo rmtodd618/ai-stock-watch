@@ -202,6 +202,11 @@ def main() -> int:
         "t": r["ticker"], "rank": r.get("rank"), "score": r["score"],
         "base": r.get("base_score"), "raw": r.get("latest_score"),
         "tags": r.get("tags") or [],
+        # The reasoning behind the score, where the snapshot recorded it.
+        "parts": r.get("breakdown") or {},
+        "macro": r.get("macro_tilt") or 0,
+        "news": r.get("sentiment_tilt") or 0,
+        "note": r.get("summary"),
         "action": r["action"], "px": r.get("current_price"),
         "c5": r.get("change_5d"), "c30": r.get("change_30d"),
         "below": r.get("pct_below_52w_high"),

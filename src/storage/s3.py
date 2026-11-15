@@ -45,6 +45,18 @@ _SNAPSHOT_FIELDS = (
     "base_score",
     "latest_score",
     "is_benchmark",
+    "insufficient_history",
+    # Why the score is what it is. These were computed on every run and then
+    # dropped on the floor: the per-component contributions, the regime and
+    # news adjustments, and the sentence the model wrote about the headlines.
+    # Without them the archive records a verdict and no reasoning, and a
+    # question asked six months from now about why a name was ranked where it
+    # was has no answer.
+    "components",
+    "breakdown",
+    "macro_tilt",
+    "sentiment_tilt",
+    "summary",
 )
 _SNAPSHOT_METRICS = (
     "current_price",
@@ -94,7 +106,7 @@ def build_snapshot(
         }
 
     return {
-        "schema": 2,
+        "schema": 3,
         "source": source,
         "generated_at": generated_at,
         # Which tickers were asked for versus which arrived. Without this a

@@ -74,9 +74,38 @@ def _score_bar(score: Optional[float], color: str) -> str:
     )
 
 
+_COMPONENT_LABELS = {
+    "long_term_trend": "LT trend",
+    "medium_term_trend": "MT trend",
+    "trend_structure": "structure",
+    "pullback": "pullback",
+    "momentum": "momentum",
+}
+
+
+def _driver(r: dict) -> str:
+    """The component contributing most, and least, to this score.
+
+    The full five-way breakdown wrapped every row to four lines and had to come
+    out of the table; this keeps the part that answers "why is it here".
+    """
+    bd = r.get("breakdown") or {}
+    live = {k: v for k, v in bd.items() if v is not None}
+    if len(live) < 2:
+        return ""
+    top = max(live, key=live.get)
+    bottom = min(live, key=live.get)
+    if top == bottom:
+        return ""
+    return f"{_COMPONENT_LABELS.get(top, top)} carries it, {_COMPONENT_LABELS.get(bottom, bottom)} drags"
+
+
 def _notes(r: dict) -> str:
     """Compact notes: regime/earnings tags, tilt deltas, and news summary."""
     parts: list[str] = list(r.get("tags", []))
+    driver = _driver(r)
+    if driver:
+        parts.append(driver)
     m = r.get("macro_tilt") or 0
     s = r.get("sentiment_tilt") or 0
     if m:

@@ -173,6 +173,20 @@ td.tk{font-family:var(--ui); font-weight:600; font-size:13px}
 .port .c.new{box-shadow:inset 3px 0 0 var(--good)}
 .port .c.stale{box-shadow:inset 3px 0 0 var(--s2)}
 
+/* why a score is what it is */
+.why{margin:0 0 14px}
+.why h4{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:-.005em}
+.why .row{display:grid;grid-template-columns:84px 1fr 42px;align-items:center;
+          gap:8px;margin-bottom:5px}
+.why .lbl{font-family:var(--mono);font-size:10px;color:var(--ink-2)}
+.why .bar{height:7px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.why .bar i{display:block;height:7px;border-radius:3px;background:var(--s1)}
+.why .bar.zero i{background:var(--ink-3);opacity:.35}
+.why .val{font-family:var(--mono);font-size:10.5px;text-align:right;
+          font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.why .tilt{font-family:var(--mono);font-size:11px;color:var(--ink-2);margin-top:8px}
+.why .note{border-top:0;margin-top:8px;padding-top:0;font-size:13px;font-style:italic}
+
 /* row sparkline + detail */
 .spark{display:block}
 .spark path{fill:none;stroke:var(--ink-3);stroke-width:1.5;stroke-linejoin:round}
@@ -333,6 +347,7 @@ footer p{margin:0 0 10px; max-width:88ch}
   </div>
   <div class="dlg-body">
     <div class="kv" id="d-kv"></div>
+    <div id="d-why"></div>
     <div class="legend">
       <span><i class="sw w1"></i>Smoothed score (what ranks it)</span>
       <span><i class="sw wm"></i>Raw score today</span>
@@ -784,6 +799,33 @@ D.standings.forEach(function(r){
              'of this chart.'
            : 'The raw score is '+g.toFixed(0)+' points above the smoothed one: it is '+
              'improving faster than the average has caught up with.'));
+
+    /* What built the score, where the snapshot recorded it. Older rows predate
+       this and simply get no panel rather than a fabricated one. */
+    var why=document.getElementById('d-why');
+    why.innerHTML='';
+    var parts=row.parts||{};
+    var keys=Object.keys(parts);
+    if(keys.length){
+      var LBL={long_term_trend:'LT trend',medium_term_trend:'MT trend',
+               trend_structure:'structure',pullback:'pullback',momentum:'momentum'};
+      var max=Math.max.apply(null,keys.map(function(k){return parts[k]||0}).concat([1]));
+      var html='<div class="why"><h4>What built this score</h4>';
+      keys.sort(function(a,b){return (parts[b]||0)-(parts[a]||0)}).forEach(function(k){
+        var v=parts[k]||0;
+        html+='<div class="row"><span class="lbl">'+(LBL[k]||k)+'</span>'+
+              '<span class="bar'+(v<=0?' zero':'')+'"><i style="width:'+
+              Math.max(2,(v/max)*100).toFixed(0)+'%"></i></span>'+
+              '<span class="val">'+v.toFixed(1)+'</span></div>';
+      });
+      var tilts=[];
+      if(row.macro) tilts.push('macro regime '+(row.macro>0?'+':'')+row.macro.toFixed(0));
+      if(row.news) tilts.push('news '+(row.news>0?'+':'')+row.news.toFixed(0));
+      if(tilts.length) html+='<div class="tilt">then adjusted: '+tilts.join(' · ')+'</div>';
+      if(row.note) html+='<div class="note">“'+row.note+'”</div>';
+      html+='</div>';
+      why.innerHTML=html;
+    }
 
     var host=document.getElementById('d-chart');
     host.innerHTML='';

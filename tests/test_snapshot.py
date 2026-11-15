@@ -89,7 +89,7 @@ def test_missing_metrics_become_null_not_an_error():
 def test_snapshot_is_json_serialisable():
     import json
 
-    assert json.loads(json.dumps(_snap()))["schema"] == 2
+    assert json.loads(json.dumps(_snap()))["schema"] == 3
 
 
 def test_coverage_is_recorded_so_missing_cannot_be_mistaken_for_unrequested():
@@ -109,3 +109,22 @@ def test_coverage_defaults_to_complete_when_not_supplied():
     snap = build_snapshot(RESULTS, CONFIG, "2026-11-12 22:00 UTC")
     assert snap["coverage"]["complete"] is True
     assert snap["coverage"]["missing"] == []
+
+
+def test_snapshot_records_why_not_just_what():
+    """A verdict with no reasoning cannot be questioned later."""
+    results = [dict(RESULTS[0],
+                    components={"pullback": 0.9, "momentum": 0.1},
+                    breakdown={"pullback": 28.8, "momentum": 0.0},
+                    macro_tilt=-6.0, sentiment_tilt=2.5,
+                    summary="Guidance raised on datacentre demand")]
+    row = build_snapshot(results, CONFIG, "2026-11-14 22:00 UTC")["rows"][0]
+    assert row["components"]["pullback"] == 0.9
+    assert row["breakdown"]["momentum"] == 0.0
+    assert row["macro_tilt"] == -6.0
+    assert row["sentiment_tilt"] == 2.5
+    assert row["summary"] == "Guidance raised on datacentre demand"
+
+
+def test_schema_is_three_now_that_reasoning_is_kept():
+    assert build_snapshot(RESULTS, CONFIG, "2026-11-14 22:00 UTC")["schema"] == 3
