@@ -314,24 +314,52 @@ def _macro_correlations(start: str = "2014-01-01") -> Optional[dict]:
         return out
 
     btc_r = changes(btc, "pct")
-    rows = []
-    for name, (how, raw) in factors.items():
-        x = changes(raw, how)
-        both = sorted(set(btc_r) & set(x))
-        if len(both) < 40:
-            continue
-        rows.append({
-            "name": name,
-            "same": round(_corr([btc_r[m] for m in both], [x[m] for m in both]), 2),
-            "next": round(_corr(
-                [btc_r[n] for m, n in zip(both, both[1:])],
-                [x[m] for m, n in zip(both, both[1:])]), 2),
-            "n": len(both),
-        })
-    rows.sort(key=lambda r: -abs(r["same"]))
-    n = max((r["n"] for r in rows), default=0)
-    return {"rows": rows, "n": n,
-            "threshold": round(2 / math.sqrt(n), 2) if n else None}
+
+    # Bull or bear by distance from the running high — the simplest split that
+    # does not need the peaks to be identified by hand.
+    months = sorted(btc)
+    peak, regime = 0.0, {}
+    for m in months:
+        peak = max(peak, btc[m])
+        regime[m] = "bull" if (btc[m] / peak - 1) * 100 > -30 else "bear"
+
+    def build(subset):
+        rows = []
+        for name, (how, raw) in factors.items():
+            x = changes(raw, how)
+            both = [m for m in sorted(set(btc_r) & set(x)) if subset(m)]
+            if len(both) < 30:
+                continue
+            pairs = [(m, n_) for m, n_ in zip(both, both[1:])]
+            rows.append({
+                "name": name,
+                "same": round(_corr([btc_r[m] for m in both], [x[m] for m in both]), 2),
+                "next": round(_corr([btc_r[b] for a, b in pairs],
+                                    [x[a] for a, b in pairs]), 2) if len(pairs) > 20 else 0.0,
+                "n": len(both),
+            })
+        rows.sort(key=lambda r: -abs(r["same"]))
+        n = max((r["n"] for r in rows), default=0)
+        return {"rows": rows, "n": n,
+                "threshold": round(2 / math.sqrt(n), 2) if n else None}
+
+    out = {
+        "all": build(lambda m: True),
+        "bull": build(lambda m: regime.get(m) == "bull"),
+        "bear": build(lambda m: regime.get(m) == "bear"),
+    }
+    # how the price itself behaves in each regime, which is the part that does differ
+    for key, test in (("bull", "bull"), ("bear", "bear")):
+        vals = [btc_r[m] for m in btc_r if regime.get(m) == test]
+        if vals:
+            mu = sum(vals) / len(vals)
+            sd = math.sqrt(sum((v - mu) ** 2 for v in vals) / max(1, len(vals) - 1))
+            out[key]["mean_return"] = round(mu, 1)
+            out[key]["vol"] = round(sd, 1)
+    out["rows"] = out["all"]["rows"]
+    out["n"] = out["all"]["n"]
+    out["threshold"] = out["all"]["threshold"]
+    return out
 
 
 def _corr(a, b):
