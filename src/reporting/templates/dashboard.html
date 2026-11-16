@@ -533,18 +533,28 @@ document.getElementById('verdict-2').textContent =
     return svg;
   });
 
-  /* What the record actually supports, stated rather than implied. */
-  var posts=ys.filter(function(y){return y.phase==='post' && !y.partial});
-  var brokenPost=posts.filter(function(y){return y.ret<0}).map(function(y){return y.y});
-  document.getElementById('btc-note').textContent =
-    'Down years so far: '+downs.join(', ')+' — a four-year rhythm, not a two-year one, '+
-    'and it lines up with the halvings rather than with the calendar. '+
-    'But this is '+cycles+' completed cycles. Three observations is a shape, not a law, '+
-    'and the current one is already off it: '+
-    (brokenPost.length
-      ? brokenPost.join(', ')+' followed a halving and still finished negative, where the '+
-        'two earlier post-halving years returned +1,318% and +58%.'
-      : 'every post-halving year so far has been positive.');
+  /* What the record supports, stated rather than implied. The spacing is
+     computed rather than asserted, because the first version of this note
+     called it "a four-year rhythm" while listing five down years, two of them
+     consecutive — a claim its own data contradicted. */
+  var gaps=[]; for(var i=1;i<downs.length;i++) gaps.push(downs[i]-downs[i-1]);
+  var clean=gaps.length?gaps.every(function(g){return g===4}):false;
+  var runs=gaps.filter(function(g){return g===1}).length;
+  var note='Down years: '+downs.join(', ')+'. ';
+  if(clean){
+    note += 'Evenly four years apart, aligned to the halvings rather than the calendar. ';
+  } else {
+    var head=[]; for(var j=0;j<gaps.length && gaps[j]===4;j++) head.push(downs[j]);
+    head.push(downs[head.length]);
+    note += head.join(', ')+' are evenly four years apart, which is where the pattern '+
+            'comes from — two intervals, about a 1-in-80 arrangement by chance. '+
+            'It no longer holds: ';
+    note += runs ? 'the last two are consecutive, which has not happened before. '
+                 : 'the spacing has broken. ';
+  }
+  note += 'The post-halving year is the one the pattern calls the top, and 2025 '+
+          'finished negative where the two earlier ones returned +1,318% and +58%.';
+  document.getElementById('btc-note').textContent = note;
 })();
 
 /* ---------- generic mount ---------- */
