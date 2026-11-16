@@ -310,12 +310,25 @@ sure about and it is worth holding to the same standard as everything else here:
   shrinking amplitude and the only one here built on thirteen years rather than
   three cycles.
 
+- **What this model predicted, and what happened** — every call the damping
+  model could have made using only the cycles before it, against the outcome.
+  How well a model fits history is the flattering view; this is the other one.
+
+Each panel carries a short note saying why it is there, so the section argues
+with itself rather than accumulating charts.
+
 What the data says, as of late 2026: the *timing* is strikingly regular — 47
 months between the last two peaks, twice; 17–18 months from halving to peak,
 three times. The *amplitude* is collapsing: gains of +3,461%, +750%, +131% and
 drawdowns of −83%, −77%, −53%. Those are separable, and only one of them is
 changing. Two intervals is not enough to call either a law, and the notes on
 each panel say so.
+
+The forecast panel is the sharpest version of that. The model has been asked to
+call a cycle in advance exactly twice. The better-informed call was the worse
+one: fitted on two cycles it predicted a −70% trough and the market delivered
+−53%, a 17-point miss. The damping factor is not stable either — 0.92 then 0.69
+— so any forward number depends on which one is chosen.
 
 ### Measuring whether it works
 

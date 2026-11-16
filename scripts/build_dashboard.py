@@ -202,8 +202,55 @@ def _bitcoin_cycle(start_year: int = 2014) -> Optional[dict]:
         sd = math.sqrt(sum((r - mu) ** 2 for r in rets) / (len(rets) - 1))
         vol.append({"y": y, "vol": round(sd * math.sqrt(365) * 100)})
 
+    # --- what the model predicted, versus what happened ---------------------
+    # The flattering view of a model is how well it fits history. The useful
+    # view is its record of calls made before the outcome was known. Only two
+    # such calls exist here, and one of them missed badly.
+    depths = [a["drawdown"] for a in aligned]
+    forecasts = []
+    if len(depths) >= 2:
+        forecasts.append({
+            "cycle": aligned[1]["name"], "basis": "repeat the previous trough",
+            "predicted": depths[0], "actual": depths[1],
+            "error": round(abs(depths[1] - depths[0]), 1), "ongoing": False,
+        })
+    if len(depths) >= 3 and depths[0]:
+        factor = depths[1] / depths[0]
+        pred = depths[1] * factor
+        forecasts.append({
+            "cycle": aligned[2]["name"],
+            "basis": f"damping factor {factor:.2f}, fitted on the two before it",
+            "predicted": round(pred, 1), "actual": depths[2],
+            "error": round(abs(depths[2] - pred), 1),
+            "ongoing": aligned[2]["ongoing"],
+        })
+
+    factors = []
+    for i in range(1, len(depths)):
+        if depths[i - 1]:
+            factors.append(round(depths[i] / depths[i - 1], 2))
+
+    # --- where the next peak lands, and how far through this cycle we are ----
+    import datetime as _dt
+    last_peak = _dt.date(*[int(x) for x in aligned[-1]["peak_date"].split("-")])
+    today_d = _dt.date(*[int(x) for x in ordered[-1].split("-")])
+    elapsed = (today_d - last_peak).days / 30.44
+    interval = None
+    if len(aligned) >= 2:
+        gaps = []
+        for i in range(1, len(aligned)):
+            a = _dt.date(*[int(x) for x in aligned[i - 1]["peak_date"].split("-")])
+            b = _dt.date(*[int(x) for x in aligned[i]["peak_date"].split("-")])
+            gaps.append((b - a).days / 30.44)
+        interval = sum(gaps) / len(gaps)
+    projected = (last_peak + _dt.timedelta(days=int(interval * 30.44))) if interval else None
+
     return {"years": years, "halvings": sorted(HALVINGS),
-            "aligned": aligned, "table": table, "vol": vol}
+            "aligned": aligned, "table": table, "vol": vol,
+            "forecasts": forecasts, "factors": factors,
+            "interval_months": round(interval, 1) if interval else None,
+            "elapsed_months": round(elapsed, 1),
+            "projected_peak": projected.isoformat() if projected else None}
 
 
 def _plan_for_page(plan: dict) -> dict:
