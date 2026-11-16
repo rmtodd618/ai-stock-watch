@@ -177,6 +177,10 @@ td.tk{font-family:var(--ui); font-weight:600; font-size:13px}
 .port .c.new{box-shadow:inset 3px 0 0 var(--good)}
 .port .c.stale{box-shadow:inset 3px 0 0 var(--s2)}
 
+.swhalv{background:var(--s1)} .swpost{background:var(--s3)}
+.btc-up{fill:var(--s1)} .btc-dn{fill:var(--bad)}
+.btc-post{fill:var(--s3)} .btc-mid{fill:var(--ink-3);opacity:.55}
+
 /* why a score is what it is */
 .why{margin:0 0 14px}
 .why h4{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:-.005em}
@@ -344,6 +348,18 @@ footer p{margin:0 0 10px; max-width:88ch}
   </div>
 </div>
 
+<div class="panel" id="btc-panel" hidden>
+  <h2>Bitcoin by year, against the halving cycle</h2>
+  <p class="sub" id="btc-sub"></p>
+  <div class="legend">
+    <span><i class="sw swhalv"></i>Halving year</span>
+    <span><i class="sw swpost"></i>Year after a halving</span>
+    <span><i class="sw wm"></i>Other</span>
+  </div>
+  <div class="chart" id="chart-btc"></div>
+  <p class="note" id="btc-note"></p>
+</div>
+
 <dialog id="detail">
   <div class="dlg-head">
     <div><h3 id="d-t"></h3><div class="sub" id="d-sub"></div></div>
@@ -448,6 +464,87 @@ document.getElementById('verdict-2').textContent =
         (stale.length>1?' are':' is') + ' marked because the raw score has fallen far '+
         'below the average still holding '+(stale.length>1?'them':'it')+' in place.'
       : '');
+})();
+
+/* ---------- bitcoin by year ---------- */
+(function(){
+  var b=D.btc;
+  if(!b || !b.years || b.years.length<2) return;
+  document.getElementById('btc-panel').hidden=false;
+
+  var ys=b.years;
+  var downs=ys.filter(function(y){return y.ret<0}).map(function(y){return y.y});
+  var complete=ys.filter(function(y){return !y.partial});
+  var cycles=Math.floor(complete.length/4);
+  document.getElementById('btc-sub').textContent =
+    ys[0].y+'–'+ys[ys.length-1].y+' · annual return on a log scale, because '+
+    'one year returned +1,318% and a linear axis would flatten the rest to nothing';
+
+  mount('chart-btc', function(W,tip,host){
+    var narrow=W<560, H=narrow?250:290;
+    var m={t:16,r:12,b:46,l:narrow?34:42};
+    var iw=W-m.l-m.r, ih=H-m.t-m.b;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H});
+    /* log growth: ln(1+r). Additive, and it keeps +1318% on the same axis as -73%. */
+    var g=function(r){return Math.log(1+r/100)};
+    var vals=ys.map(function(y){return g(y.ret)});
+    var hi=Math.max.apply(null,vals), lo=Math.min.apply(null,vals);
+    var pad=(hi-lo)*0.12; hi+=pad; lo-=pad;
+    var Y=function(v){return m.t+ih-(v-lo)/(hi-lo)*ih};
+    var zero=Y(0);
+    [-75,-50,0,100,300,1300].forEach(function(pc){
+      var v=g(pc); if(v<lo||v>hi) return;
+      var y=Y(v);
+      svg.appendChild(el('line',{class:'grid',x1:m.l,x2:m.l+iw,y1:y,y2:y}));
+      svg.appendChild(tx(el('text',{class:'tick',x:m.l-6,y:y+3.5,'text-anchor':'end'}),
+        (pc>0?'+':'')+pc+'%'));
+    });
+    svg.appendChild(el('line',{class:'axis',x1:m.l,x2:m.l+iw,y1:zero,y2:zero}));
+
+    var slot=iw/ys.length, bw=Math.min(narrow?20:34, slot-8);
+    ys.forEach(function(yr,i){
+      var x=m.l+slot*i+(slot-bw)/2;
+      var top=Y(g(yr.ret)), y0=Math.min(top,zero), h=Math.abs(top-zero);
+      var cls = yr.ret<0 ? 'btc-dn' : (yr.phase==='halving' ? 'btc-up'
+               : yr.phase==='post' ? 'btc-post' : 'btc-mid');
+      var g2=el('g',{});
+      g2.appendChild(el('rect',{x:x,y:y0,width:bw,height:Math.max(2,h),rx:3,
+        class:cls, opacity:yr.partial?0.55:1}));
+      g2.appendChild(tx(el('text',{class:'tick',x:x+bw/2,y:H-30,'text-anchor':'middle'}),
+        String(yr.y).slice(2)));
+      if(yr.phase==='halving')
+        g2.appendChild(tx(el('text',{class:'tick f1',x:x+bw/2,y:H-18,'text-anchor':'middle',
+          style:'font-weight:700'}),'H'));
+      g2.addEventListener('mousemove',function(ev){
+        var rc=host.getBoundingClientRect();
+        tip.innerHTML='<div class="d">'+yr.y+(yr.partial?' (year to date)':'')+'</div>'+
+          '<div class="r"><span>Return</span><b class="'+(yr.ret>=0?'pos':'neg')+'">'+
+          pct(yr.ret,0)+'</b></div>'+
+          '<div class="r"><span>Cycle</span><b>'+
+          ({halving:'halving year',post:'year after halving',pre:'year before',
+            mid:'mid-cycle'})[yr.phase]+'</b></div>';
+        tip.style.opacity=1; place(tip,host,ev.clientX-rc.left,ev.clientY-rc.top);
+      });
+      g2.addEventListener('mouseleave',function(){tip.style.opacity=0});
+      svg.appendChild(g2);
+    });
+    svg.appendChild(tx(el('text',{class:'tick',x:m.l,y:H-4}),
+      'H = halving year'));
+    return svg;
+  });
+
+  /* What the record actually supports, stated rather than implied. */
+  var posts=ys.filter(function(y){return y.phase==='post' && !y.partial});
+  var brokenPost=posts.filter(function(y){return y.ret<0}).map(function(y){return y.y});
+  document.getElementById('btc-note').textContent =
+    'Down years so far: '+downs.join(', ')+' — a four-year rhythm, not a two-year one, '+
+    'and it lines up with the halvings rather than with the calendar. '+
+    'But this is '+cycles+' completed cycles. Three observations is a shape, not a law, '+
+    'and the current one is already off it: '+
+    (brokenPost.length
+      ? brokenPost.join(', ')+' followed a halving and still finished negative, where the '+
+        'two earlier post-halving years returned +1,318% and +58%.'
+      : 'every post-halving year so far has been positive.');
 })();
 
 /* ---------- generic mount ---------- */

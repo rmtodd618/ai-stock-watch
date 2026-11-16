@@ -97,6 +97,45 @@ def _load_holdings(args) -> Optional[dict]:
     return None
 
 
+# Halvings, which are scheduled rather than inferred — roughly every 210,000
+# blocks. The cycle people describe is anchored to these, not to a fixed number
+# of calendar years.
+HALVINGS = {2012, 2016, 2020, 2024, 2028}
+
+
+def _bitcoin_cycle(start_year: int = 2014) -> Optional[dict]:
+    """Annual Bitcoin returns, tagged by position in the halving cycle.
+
+    Plotted on log growth, because one year in the sample returned 1,318% and a
+    linear axis would flatten every other year into the baseline. Log returns
+    are additive, so this is the honest scale rather than a cosmetic one.
+    """
+    got = price_source.fetch_history("BTC-USD", period="max")
+    if not got:
+        logger.warning("No Bitcoin history; skipping the cycle panel.")
+        return None
+    dates, closes = got
+    by_year: dict[int, list[float]] = {}
+    for d, c in zip(dates, closes):
+        y = int(d[:4])
+        if y >= start_year:
+            by_year.setdefault(y, []).append(c)
+
+    years = []
+    for y in sorted(by_year):
+        vals = by_year[y]
+        if len(vals) < 2:
+            continue
+        ret = (vals[-1] / vals[0] - 1) * 100
+        phase = ("halving" if y in HALVINGS
+                 else "post" if (y - 1) in HALVINGS
+                 else "pre" if (y + 1) in HALVINGS
+                 else "mid")
+        years.append({"y": y, "ret": round(ret, 1), "phase": phase,
+                      "partial": y == int(dates[-1][:4])})
+    return {"years": years, "halvings": sorted(HALVINGS)}
+
+
 def _plan_for_page(plan: dict) -> dict:
     """Only what the page draws — never cost basis or share counts."""
     return {
@@ -263,6 +302,7 @@ def main() -> int:
         "detail": detail,
         "dates": dates,
         "plan": _plan_for_page(plan) if plan else None,
+        "btc": _bitcoin_cycle(),
     }
     # the page expects ic entries keyed ic/t/n
     out["ic"] = [{"h": e["h"], "ic": e.get("mean_ic"), "t": e.get("t_stat"),
