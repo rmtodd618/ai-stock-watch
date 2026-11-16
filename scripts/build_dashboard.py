@@ -101,6 +101,13 @@ def _load_holdings(args) -> Optional[dict]:
 # blocks. The cycle people describe is anchored to these, not to a fixed number
 # of calendar years.
 HALVINGS = {2012, 2016, 2020, 2024, 2028}
+HALVING_DATES = ["2012-11-28", "2016-07-09", "2020-05-11", "2024-04-20", "2028-04-01"]
+# (label, peak date, next peak or None while a cycle is still running)
+CYCLE_PEAKS = [
+    ("2017 cycle", "2017-12-16", "2021-11-08"),
+    ("2021 cycle", "2021-11-08", "2025-10-06"),
+    ("2025 cycle", "2025-10-06", None),
+]
 
 
 def _bitcoin_cycle(start_year: int = 2014) -> Optional[dict]:
@@ -133,7 +140,70 @@ def _bitcoin_cycle(start_year: int = 2014) -> Optional[dict]:
                  else "mid")
         years.append({"y": y, "ret": round(ret, 1), "phase": phase,
                       "partial": y == int(dates[-1][:4])})
-    return {"years": years, "halvings": sorted(HALVINGS)}
+    # --- cycles aligned on their peaks -------------------------------------
+    # Each cycle indexed to its own top, so three drawdowns of very different
+    # magnitude can be read against each other on one axis.
+    import datetime as _dt
+
+    def _d(x):
+        return _dt.date(int(x[:4]), int(x[5:7]), int(x[8:10]))
+
+    px = dict(zip(dates, closes))
+    ordered = sorted(px)
+    aligned, table = [], []
+    for name, pk, nxt in CYCLE_PEAKS:
+        if pk not in px:
+            near = min(ordered, key=lambda d: abs((_d(d) - _d(pk)).days))
+            pk = near
+        base = px[pk]
+        end = nxt if nxt and nxt in px else ordered[-1]
+        pts, lo, lo_d = [], None, None
+        for d in ordered:
+            if d < pk or d > end:
+                continue
+            m = (_d(d) - _d(pk)).days / 30.44
+            if lo is None or px[d] < lo:
+                lo, lo_d = px[d], d
+            # weekly is smooth enough and keeps the payload small
+            if not pts or m - pts[-1]["m"] >= 0.23:
+                pts.append({"m": round(m, 2), "v": round((px[d] / base - 1) * 100, 1)})
+        aligned.append({"name": name, "peak": round(base), "peak_date": pk,
+                        "points": pts, "trough": round(lo), "trough_date": lo_d,
+                        "drawdown": round((lo / base - 1) * 100, 1),
+                        "ongoing": nxt is None})
+
+    # --- halving-to-halving highs and lows ----------------------------------
+    for i in range(len(HALVING_DATES) - 1):
+        a, b = HALVING_DATES[i], HALVING_DATES[i + 1]
+        window = [d for d in ordered if a <= d < b]
+        if len(window) < 30:
+            continue
+        lo_d = min(window, key=lambda d: px[d])
+        hi_d = max(window, key=lambda d: px[d])
+        after = [d for d in ordered if d > hi_d]
+        nxt_lo = min((px[d] for d in after), default=None)
+        table.append({
+            "cycle": a[:4] + "–" + b[:4],
+            "low": round(px[lo_d]), "low_date": lo_d,
+            "high": round(px[hi_d]), "high_date": hi_d,
+            "gain": round((px[hi_d] / px[lo_d] - 1) * 100),
+            "drawdown": round((nxt_lo / px[hi_d] - 1) * 100) if nxt_lo else None,
+            "ongoing": b > ordered[-1],
+        })
+
+    # --- realised volatility by year ----------------------------------------
+    vol = []
+    for y in sorted({int(d[:4]) for d in ordered}):
+        days = [d for d in ordered if d.startswith(str(y))]
+        if len(days) < 100:
+            continue
+        rets = [math.log(px[days[i]] / px[days[i - 1]]) for i in range(1, len(days))]
+        mu = sum(rets) / len(rets)
+        sd = math.sqrt(sum((r - mu) ** 2 for r in rets) / (len(rets) - 1))
+        vol.append({"y": y, "vol": round(sd * math.sqrt(365) * 100)})
+
+    return {"years": years, "halvings": sorted(HALVINGS),
+            "aligned": aligned, "table": table, "vol": vol}
 
 
 def _plan_for_page(plan: dict) -> dict:

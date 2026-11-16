@@ -296,6 +296,27 @@ and live prices. The measurements say this tool cannot do those things, and a
 page implying otherwise would be lying in the direction people want to be lied
 to in.
 
+### Bitcoin cycle panels
+
+Three panels, added because the halving cycle is the pattern most people are
+sure about and it is worth holding to the same standard as everything else here:
+
+- **Annual returns** against the halving schedule, on a log scale (one year
+  returned +1,318%; a linear axis flattens the rest to nothing).
+- **The three cycles aligned on their peaks**, indexed so drawdowns of very
+  different size compare directly. The window is 30 months, which covers every
+  trough — past that a completed cycle climbs back above its own peak.
+- **Annualised volatility by year**, which is the measurement behind the
+  shrinking amplitude and the only one here built on thirteen years rather than
+  three cycles.
+
+What the data says, as of late 2026: the *timing* is strikingly regular — 47
+months between the last two peaks, twice; 17–18 months from halving to peak,
+three times. The *amplitude* is collapsing: gains of +3,461%, +750%, +131% and
+drawdowns of −83%, −77%, −53%. Those are separable, and only one of them is
+changing. Two intervals is not enough to call either a law, and the notes on
+each panel say so.
+
 ### Measuring whether it works
 
 ```bash
