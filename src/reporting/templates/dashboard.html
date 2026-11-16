@@ -352,6 +352,18 @@ footer p{margin:0 0 10px; max-width:88ch}
   </div>
 </div>
 
+<div class="panel" id="macro-panel" hidden>
+  <h2>What actually moves Bitcoin</h2>
+  <p class="sub" id="macro-sub"></p>
+  <p class="why-note">Here as the counterweight to the cycle panels below. Those
+    show the pattern people believe in; this shows what the data says the price
+    responds to. Correlations are on month-over-month <em>changes</em> — correlating
+    the levels of two trending series yields a large number that means nothing,
+    which is how most &ldquo;Bitcoin tracks X&rdquo; claims get made.</p>
+  <div class="chart" id="chart-macro"></div>
+  <p class="note" id="macro-note"></p>
+</div>
+
 <div class="panel" id="btc-panel" hidden>
   <h2>Bitcoin by year, against the halving cycle</h2>
   <p class="sub" id="btc-sub"></p>
@@ -516,6 +528,73 @@ document.getElementById('verdict-2').textContent =
         (stale.length>1?' are':' is') + ' marked because the raw score has fallen far '+
         'below the average still holding '+(stale.length>1?'them':'it')+' in place.'
       : '');
+})();
+
+/* ---------- what moves bitcoin ---------- */
+(function(){
+  var M=D.macro; if(!M||!M.rows||!M.rows.length) return;
+  document.getElementById('macro-panel').hidden=false;
+  document.getElementById('macro-sub').textContent =
+    'Monthly correlation with Bitcoin returns, '+M.n+' months. Blue bars are the '+
+    'same month; grey is whether the factor predicts the month after.';
+
+  mount('chart-macro', function(W,tip,host){
+    var rows=M.rows, narrow=W<560;
+    var rowH=narrow?30:34, lw=narrow?108:150;
+    var H=rows.length*rowH+34, m={t:8,l:lw,r:narrow?30:44};
+    var iw=W-m.l-m.r;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H});
+    /* Scale to the data, not to the full +/-1 range correlations could occupy.
+       Nothing here exceeds 0.35, and a +/-1 axis left two thirds of the panel
+       empty with every bar squeezed into the middle. */
+    var peak=0;
+    rows.forEach(function(r){ peak=Math.max(peak,Math.abs(r.same),Math.abs(r.next)); });
+    var dom=Math.max(0.2, peak*1.18);
+    var zero=m.l+iw/2, half=iw/2;
+    var X=function(c){return zero+Math.max(-1,Math.min(1,c/dom))*half};
+    var ticks=[]; var stepT=dom>0.3?0.2:0.1;
+    for(var t=-Math.floor(dom/stepT)*stepT;t<=dom+1e-9;t+=stepT) ticks.push(Math.round(t*100)/100);
+    ticks.forEach(function(c){
+      var x=X(c);
+      svg.appendChild(el('line',{class:c===0?'axis':'grid',x1:x,x2:x,y1:m.t,y2:m.t+rows.length*rowH-8}));
+      svg.appendChild(tx(el('text',{class:'tick',x:x,y:H-8,'text-anchor':'middle'}),
+        (c>0?'+':'')+c.toFixed(c===0?0:2)));
+    });
+    /* everything inside this band is indistinguishable from zero */
+    svg.appendChild(el('rect',{x:X(-M.threshold),y:m.t,width:X(M.threshold)-X(-M.threshold),
+      height:rows.length*rowH-8,fill:'var(--ink-3)','fill-opacity':.07}));
+    svg.appendChild(tx(el('text',{class:'tick',x:zero,y:m.t+11,'text-anchor':'middle'}),'noise'));
+
+    rows.forEach(function(r,i){
+      var y=m.t+i*rowH+6, bh=9;
+      svg.appendChild(tx(el('text',{class:'tick',x:m.l-8,y:y+bh,'text-anchor':'end',
+        style:'font-size:11px',fill:'var(--ink)'}),r.name));
+      [[r.same,'f1',0],[r.next,'fmute',bh+2]].forEach(function(c){
+        var v=c[0], x0=Math.min(zero,X(v)), w=Math.abs(X(v)-zero);
+        var sig=Math.abs(v)>=M.threshold;
+        svg.appendChild(el('rect',{x:x0,y:y+c[2],width:Math.max(1.5,w),height:bh,rx:2,
+          class:c[1],opacity:sig?1:0.4}));
+      });
+      svg.appendChild(tx(el('text',{class:'dlab '+(Math.abs(r.same)>=M.threshold?'f1':'fmute'),
+        x:X(r.same)+(r.same>=0?5:-5),y:y+bh,
+        'text-anchor':r.same>=0?'start':'end'}),(r.same>0?'+':'')+r.same.toFixed(2)));
+    });
+    return svg;
+  });
+
+  var top=M.rows[0], strong=M.rows.filter(function(r){return Math.abs(r.same)>=M.threshold});
+  var pred=M.rows.filter(function(r){return Math.abs(r.next)>=M.threshold});
+  document.getElementById('macro-note').textContent =
+    'Anything inside \u00b1'+M.threshold+' cannot be told from zero at '+M.n+' months. '+
+    'Only '+strong.length+' factor'+(strong.length===1?'':'s')+' clear it, and they are '+
+    strong.map(function(r){return r.name}).join(' and ')+' — risk appetite, not policy. '+
+    'The Fed funds rate itself sits at '+M.rows.filter(function(r){
+      return r.name==='Fed funds rate'})[0].same.toFixed(2)+
+    ', which is to say the link runs through how rates move stocks rather than '+
+    'through rates directly. '+
+    (pred.length? 'Of the next-month column, only '+pred.map(function(r){return r.name}).join(', ')+
+      ' clears the threshold — barely, and on one tail of ten tests.'
+     : 'Nothing in the next-month column clears it: none of these forecast the following month.');
 })();
 
 /* ---------- bitcoin by year ---------- */

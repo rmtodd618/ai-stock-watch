@@ -253,6 +253,96 @@ def _bitcoin_cycle(start_year: int = 2014) -> Optional[dict]:
             "projected_peak": projected.isoformat() if projected else None}
 
 
+def _macro_correlations(start: str = "2014-01-01") -> Optional[dict]:
+    """What actually moves Bitcoin, measured rather than assumed.
+
+    Correlations are computed on month-over-month *changes*. Correlating the
+    levels of two trending series produces a large number that means nothing,
+    which is how most "Bitcoin tracks X" claims are produced.
+    """
+    import io
+    import urllib.request
+
+    def fred(sid):
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
+        raw = urllib.request.urlopen(url, timeout=30).read().decode()
+        rows = [r.split(",") for r in raw.strip().splitlines()[1:]]
+        out = {}
+        for d, v in rows:
+            try:
+                out[d[:7]] = float(v)
+            except ValueError:
+                pass
+        return out
+
+    def monthly(ticker):
+        got = price_source.fetch_history(ticker, period="max")
+        if not got:
+            return {}
+        last = {}
+        for d, c in zip(*got):
+            if d >= start:
+                last[d[:7]] = c
+        return last
+
+    try:
+        btc = monthly("BTC-USD")
+        factors = {
+            "S&P 500": ("pct", monthly("SPY")),
+            "VIX": ("diff", monthly("^VIX")),
+            "Dollar index": ("pct", monthly("DX-Y.NYB")),
+            "Gold": ("pct", monthly("GLD")),
+            "10y Treasury yield": ("diff", monthly("^TNX")),
+            "Fed funds rate": ("diff", fred("FEDFUNDS")),
+            "Unemployment": ("diff", fred("UNRATE")),
+            "Payrolls": ("pct", fred("PAYEMS")),
+            "M2 money supply": ("pct", fred("M2SL")),
+            "CPI inflation": ("pct", fred("CPIAUCSL")),
+        }
+    except Exception as exc:  # noqa: BLE001 - macro context is never load-bearing
+        logger.warning("Macro panel unavailable: %s", exc)
+        return None
+
+    def changes(series, how):
+        ms = sorted(series)
+        out = {}
+        for a, b in zip(ms, ms[1:]):
+            if how == "pct" and series[a]:
+                out[b] = (series[b] / series[a] - 1) * 100
+            elif how == "diff":
+                out[b] = series[b] - series[a]
+        return out
+
+    btc_r = changes(btc, "pct")
+    rows = []
+    for name, (how, raw) in factors.items():
+        x = changes(raw, how)
+        both = sorted(set(btc_r) & set(x))
+        if len(both) < 40:
+            continue
+        rows.append({
+            "name": name,
+            "same": round(_corr([btc_r[m] for m in both], [x[m] for m in both]), 2),
+            "next": round(_corr(
+                [btc_r[n] for m, n in zip(both, both[1:])],
+                [x[m] for m, n in zip(both, both[1:])]), 2),
+            "n": len(both),
+        })
+    rows.sort(key=lambda r: -abs(r["same"]))
+    n = max((r["n"] for r in rows), default=0)
+    return {"rows": rows, "n": n,
+            "threshold": round(2 / math.sqrt(n), 2) if n else None}
+
+
+def _corr(a, b):
+    n = len(a)
+    ma, mb = sum(a) / n, sum(b) / n
+    num = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    da = math.sqrt(sum((x - ma) ** 2 for x in a))
+    db = math.sqrt(sum((y - mb) ** 2 for y in b))
+    return num / (da * db) if da and db else 0.0
+
+
 def _plan_for_page(plan: dict) -> dict:
     """Only what the page draws — never cost basis or share counts."""
     return {
@@ -420,6 +510,7 @@ def main() -> int:
         "dates": dates,
         "plan": _plan_for_page(plan) if plan else None,
         "btc": _bitcoin_cycle(),
+        "macro": _macro_correlations(),
     }
     # the page expects ic entries keyed ic/t/n
     out["ic"] = [{"h": e["h"], "ic": e.get("mean_ic"), "t": e.get("t_stat"),

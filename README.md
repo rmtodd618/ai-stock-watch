@@ -296,7 +296,21 @@ and live prices. The measurements say this tool cannot do those things, and a
 page implying otherwise would be lying in the direction people want to be lied
 to in.
 
-### Bitcoin cycle panels
+### Macro and Bitcoin cycle panels
+
+**What actually moves Bitcoin** sits above the cycle panels as their
+counterweight. Monthly correlations against the S&P 500, VIX, the dollar, gold,
+the 10-year, the Fed funds rate, unemployment, payrolls, M2 and CPI — computed
+on month-over-month *changes*, because correlating the levels of two trending
+series produces a large number that means nothing. A shaded band marks the range
+that cannot be told from zero at the available sample size.
+
+The result: only the S&P 500 (+0.35) and VIX (−0.25) clear it. The Fed funds
+rate sits at −0.08, so the policy link runs through how rates move equities
+rather than through rates directly, and nothing in the table forecasts the
+following month.
+
+
 
 Three panels, added because the halving cycle is the pattern most people are
 sure about and it is worth holding to the same standard as everything else here:
